@@ -1,0 +1,89 @@
+{
+  "lighting": {
+    "primary_style": "Clean, bright studio lighting for product shots; natural ambient light for lifestyle shots",
+    "time_of_day": "mixed",
+    "quality": "soft/diffused",
+    "notes": "Product-only shots use pure white background with even, shadowless studio lighting. Lifestyle shots favour soft natural window light or bright indoor ambient. No harsh shadows or dramatic contrast lighting used anywhere in the feed."
+  },
+  "composition": {
+    "primary_angles": [
+      "strict lateral profile (90-degree side view)",
+      "three-quarter angle",
+      "full-body front-facing",
+      "mid-body to foot crop"
+    ],
+    "framing": "Product shots are tightly framed in a square or landscape format with generous negative space. Lifestyle shots frame the full body or crop from mid-thigh downward to emphasise footwear in context.",
+    "subject_placement": "Centred for product-only shots. Rule of thirds or slight off-centre for lifestyle model shots.",
+    "notes": "Consistent use of pure profile view for product hero shots creates a strong catalogue-style visual language. Lifestyle shots deliberately crop to show shoe-to-outfit relationship."
+  },
+  "colour_palette": {
+    "dominant_colours": [
+      "warm tan/caramel",
+      "chocolate brown",
+      "off-white/cream",
+      "navy",
+      "slate grey"
+    ],
+    "accent_colours": [
+      "forest green (brand accent)",
+      "cognac/rust",
+      "pale blue"
+    ],
+    "overall_temperature": "warm",
+    "saturation": "natural",
+    "notes": "The product palette heavily features earthy, warm leather tones \u2014 tans, browns, and creams. Lifestyle backgrounds are consistently neutral (white, beige, warm grey). The brand's signature forest green appears subtly on shoe tabs/branding details."
+  },
+  "settings_and_environments": {
+    "most_common": [
+      "pure white studio backdrop",
+      "minimal modern interior (open-plan loft, living room)",
+      "neutral home setting (armchair, sofa, hardwood floors)"
+    ],
+    "indoor_outdoor_split": "90% indoor / 10% outdoor-adjacent",
+    "background_style": "Consistently clean, uncluttered backgrounds. Studio shots use seamless white. Lifestyle shots use warm-toned, well-lit interiors with minimal furniture and light wood floors.",
+    "notes": "No outdoor or street-level lifestyle content visible. The brand presents a refined, aspirational home and studio aesthetic. Backgrounds never compete with the footwear."
+  },
+  "subject_and_styling": {
+    "model_presentation": "Models are styled in relaxed smart-casual outfits. Poses are natural and understated \u2014 standing straight, seated in chairs, or mid-stride. Facial expressions are neutral to slightly confident.",
+    "outfit_styles": [
+      "denim shirt with chino shorts",
+      "grey crewneck sweater with olive slim trousers",
+      "green sweater with slim dark jeans (cuffed)",
+      "striped linen shirt with brown shorts",
+      "white blouse with wide-leg cream trousers"
+    ],
+    "product_placement": "Shoes are always clearly visible and often the lowest anchor point of the frame. Lifestyle shots are composed to ensure the shoe reads clearly against the floor or background.",
+    "notes": "Both male and female models featured. Outfits are intentionally simple and neutral to avoid distracting from footwear. Cuffed trousers and shorts are frequently used to maximise shoe visibility."
+  },
+  "post_production": {
+    "editing_style": "clean",
+    "grain_or_texture": false,
+    "contrast_level": "low",
+    "notes": "Images are lightly edited with minimal processing. White backgrounds are pure and bright. Lifestyle images retain natural colour with slight warmth. No filmic grain, heavy vignetting, or dramatic colour grading. Skin tones appear natural and accurate."
+  },
+  "recurring_motifs": [
+    "strict 90-degree side profile product shot on white background",
+    "hardwood or light wood flooring in lifestyle shots",
+    "neutral-coloured outfits (beige, cream, grey, navy) as styling backdrop",
+    "small green brand tab visible on heel of shoes",
+    "moccasin-stitch and leather craftsmanship detail emphasis",
+    "loafer and driver shoe silhouettes dominating the feed",
+    "models seated in armchairs or mid-stride on open floors",
+    "paired product shots (both shoes shown together at angle)"
+  ],
+  "what_to_always_do": [
+    "Shoot product hero images in strict lateral profile against a pure seamless white background with soft, even, shadowless lighting",
+    "Style models in simple, neutral-toned smart-casual outfits that keep the shoe as the clear focal point",
+    "Use warm, natural interior environments with light wood floors and minimal clutter for lifestyle content",
+    "Ensure the shoe is always fully visible and unobstructed in the frame, cropping strategically from mid-thigh or knee down when in lifestyle context",
+    "Maintain a warm, earthy colour temperature across all content to align with the leather goods brand identity"
+  ],
+  "what_to_never_do": [
+    "Never use busy, colourful, or textured backgrounds that compete with the footwear",
+    "Never apply heavy post-processing, dramatic colour grading, film grain, or high-contrast edits",
+    "Never style models in loud, patterned, or brightly coloured clothing that distracts from the shoe",
+    "Never shoot product images from above or at unconventional angles \u2014 always use the established lateral or three-quarter profile",
+    "Never place shoes in outdoor, gritty, or urban street environments \u2014 keep settings refined, interior, and aspirational"
+  ],
+  "flux_style_prompt_addition": "Clean studio or warm modern interior aesthetic, soft diffused natural light, pure white or neutral warm-beige background, earthy leather tones, minimal smart-casual styling, sharp product clarity, low contrast, no grain, refined and understated craftsmanship-forward visual language."
+}

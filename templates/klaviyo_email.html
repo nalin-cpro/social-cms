@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ subject }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 0 auto; background: #fff; }
+    .header { background: #1a1a1a; padding: 32px; text-align: center; }
+    .header img { max-width: 160px; }
+    .hero { width: 100%; display: block; }
+    .body { padding: 32px; }
+    .body h1 { font-size: 24px; margin: 0 0 16px; }
+    .body p { font-size: 15px; line-height: 1.6; margin: 0 0 20px; }
+    .cta { display: inline-block; background: #1a1a1a; color: #fff; text-decoration: none;
+           padding: 14px 32px; border-radius: 4px; font-size: 15px; font-weight: bold; }
+    .footer { padding: 24px 32px; font-size: 12px; color: #aaa; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <!-- MBC logo goes here -->
+    </div>
+
+    <!-- Hero image placeholder -->
+    <!-- <img class="hero" src="{{ hero_image_url }}" alt="{{ product_name }}" /> -->
+
+    <div class="body">
+      <h1>{{ headline }}</h1>
+      <p>{{ body }}</p>
+      <a class="cta" href="{{ cta_url }}">{{ cta_text }}</a>
+    </div>
+
+    <div class="footer">
+      <p>Milwaukee Boot Company · Milwaukee, WI</p>
+      <p><a href="{{ unsubscribe_url }}">Unsubscribe</a></p>
+    </div>
+  </div>
+</body>
+</html>

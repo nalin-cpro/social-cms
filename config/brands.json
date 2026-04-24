@@ -1,0 +1,137 @@
+{
+  "mbc": {
+    "name": "Milwaukee Boot Company",
+    "instagram_handle": "mkebootco",
+    "storefront_url": "https://milwaukeebootcompany.com",
+    "image_style": "warm golden light, outdoor and urban settings, rich leather tones, editorial documentary photography feel, gritty authentic textures, natural shadows, no white studio backgrounds",
+    "approver_email": "",
+    "brand_voice": "Confident, understated, craftsman-proud. We don't shout — we let the leather do the talking. Warm but not twee. Aspirational without being inaccessible. Short sentences. No fluff. Speak to a man who knows what he wants and values things built to last.",
+    "copy_rules": {
+      "dos": [
+        "Lead with feeling and experience, not features",
+        "Use sensory language — texture, weight, smell of leather",
+        "Reference real places, real moments, real wear",
+        "Keep sentences short and punchy",
+        "Let the product name appear naturally — not forced",
+        "Anchor copy in the campaign theme",
+        "Use lowercase styling for a relaxed, editorial tone where appropriate"
+      ],
+      "donts": [
+        "Never use the word 'affordable' or imply the product is cheap",
+        "Never use corporate or salesy language (e.g. 'grab yours', 'don't miss out')",
+        "Never use exclamation marks more than once per piece of copy",
+        "Never mention competitors or compare to other brands",
+        "Never make claims about durability that sound like a warranty",
+        "Never use generic lifestyle filler phrases like 'live your best life'",
+        "Never use passive voice — always active and direct"
+      ],
+      "forbidden_terms": [
+        "affordable", "cheap", "budget", "deal", "sale", "discount",
+        "luxury", "premium", "high-end", "exclusive",
+        "game-changer", "revolutionize", "disrupt",
+        "grab yours", "don't miss out", "limited time",
+        "live your best life", "hustle", "grind"
+      ]
+    },
+    "reference_images": [
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_humbolt_dkbrownsuede_01.jpg?v=1775456083",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/9af1fee911464bd18e52180f1d58adaa.png?v=1775456356",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_dellsloafer_midnight_01.jpg?v=1775456212",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/Dells_Midnight_LS.png?v=1775456344",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_reiman_camel_01.jpg?v=1775456092",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/Reiman_Cognac_LS.png?v=1775456333",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_bernie_claymulti_01_a7c3734b-3767-4f84-8637-71c5a19412d4.jpg?v=1775456293",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/285e2c153f31412cb48fe7ffed61d3e2.png?v=1775456358",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_theodora_pewter_01.jpg?v=1775456149",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/Theodora_Pewter_Allis_LS.png?v=1775456361",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_tammy_lightblue_01.jpg?v=1775456128",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/Tammy_Blue_and_Bone_Olson_LS.png?v=1775456312",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_dunes_black_01.jpg?v=1775456229",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/Dunes_Black_LS.png?v=1775456348",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_riverwest_chukka_tan_01.jpg?v=1775456195",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_riverwest_chukka_tan_02.jpg?v=1775456197",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_gallun_whitegrey_01.jpg?v=1775456183",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_gallun_whitegrey_02.jpg?v=1775456184",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_lizzie_clay_01.jpg?v=1775456124",
+      "https://cdn.shopify.com/s/files/1/0693/5566/7628/files/milwaukeebootco_lizzie_bone_01.jpg?v=1775456111"
+    ],
+    "scenes": [
+      {
+        "name": "urban_loft",
+        "description": "Warm loft apartment interior. Exposed brick wall, large industrial windows with city view. Warm amber lamp light. Hardwood floors. Man standing with coffee mug, looking out window."
+      },
+      {
+        "name": "city_street",
+        "description": "Urban city street, golden hour. Cobblestone or clean pavement. City buildings softly blurred in background. Man walking confidently, shot from waist down to show full leg and shoe."
+      },
+      {
+        "name": "coffee_shop",
+        "description": "Upscale coffee shop interior. Warm wood tones, marble counter, soft morning light from large windows. Man seated at bar stool or standing at counter, laptop nearby."
+      },
+      {
+        "name": "office_modern",
+        "description": "Modern open-plan office. Floor-to-ceiling glass, city views. Clean desk setup. Man standing by window or walking through office space, professional but relaxed."
+      },
+      {
+        "name": "weekend_market",
+        "description": "Outdoor weekend market or farmers market. Natural morning light, green trees, people softly blurred in background. Man browsing, relaxed weekend energy."
+      },
+      {
+        "name": "industrial_exterior",
+        "description": "Industrial building exterior. Brick walls, metal doors, urban alley. Overcast natural light. Man leaning against wall or walking, editorial street style feel."
+      }
+    ]
+  },
+  "mc": {
+    "name": "Moral Code",
+    "instagram_handle": "moralcode",
+    "storefront_url": "https://moralcode.com",
+    "image_style": "clean minimal lifestyle photography, bright natural light, refined urban and professional settings, neutral tones, understated luxury, crisp shadows, contemporary editorial",
+    "approver_email": "",
+    "brand_voice": "Polished, minimal, intentional. Quiet confidence. We speak to people who've moved past the need to prove anything. Clean prose, no filler, no hype. Every word earns its place. Sophisticated without being cold.",
+    "copy_rules": {
+      "dos": [
+        "Use clean, minimal language — fewer words, more meaning",
+        "Speak to quiet confidence and intentional living",
+        "Reference quality of materials and considered design",
+        "Use white space in copy — short paragraphs, clean rhythm",
+        "Let the product speak; the copy provides context, not hype",
+        "Anchor copy in the campaign theme with restraint"
+      ],
+      "donts": [
+        "Never use hyperbole or superlatives (best, ultimate, perfect)",
+        "Never sound loud, urgent, or desperate for attention",
+        "Never use slang or overly casual language",
+        "Never use exclamation marks",
+        "Never mention competitors",
+        "Never use filler phrases that dilute the message",
+        "Never use passive voice"
+      ],
+      "forbidden_terms": [
+        "affordable", "cheap", "budget", "deal", "sale", "discount",
+        "luxury", "premium", "high-end", "exclusive", "best", "ultimate", "perfect",
+        "game-changer", "revolutionize", "disrupt",
+        "grab yours", "don't miss out", "limited time",
+        "amazing", "incredible", "stunning"
+      ]
+    },
+    "scenes": [
+      {
+        "name": "minimal_interior",
+        "description": "Minimalist apartment interior. White walls, concrete floor, clean lines. Soft diffused morning light. Man or woman standing, looking out window."
+      },
+      {
+        "name": "marble_lobby",
+        "description": "Upscale hotel or office marble lobby. Cool neutral tones. Man walking through space, polished and confident."
+      },
+      {
+        "name": "city_terrace",
+        "description": "Rooftop terrace or outdoor cafe. City skyline in background. Clean architectural lines. Morning light, coffee in hand."
+      },
+      {
+        "name": "gallery_space",
+        "description": "Modern art gallery or museum. White walls, polished concrete floor, natural skylights. Person walking through exhibition space."
+      }
+    ]
+  }
+}

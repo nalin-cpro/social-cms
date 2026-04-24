@@ -1,0 +1,72 @@
+version: "3.9"
+
+# PRODUCTION — all three services run in Docker with built images.
+# Deploy with:  docker compose -f docker-compose.prod.yml up --build -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-progility}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-progility}
+      POSTGRES_DB: ${POSTGRES_DB:-progility}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-progility} -d ${POSTGRES_DB:-progility}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-progility}:${POSTGRES_PASSWORD:-progility}@db:5432/${POSTGRES_DB:-progility}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./outputs:/app/outputs
+      - ./config:/app/config
+      - ./assets:/app/assets
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  agent:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-progility}:${POSTGRES_PASSWORD:-progility}@db:5432/${POSTGRES_DB:-progility}
+    volumes:
+      - ./outputs:/app/outputs
+      - ./assets:/app/assets
+      - ./config:/app/config
+      - ./templates:/app/templates
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m src.pipeline
+    profiles:
+      - pipeline
+
+volumes:
+  pgdata:
