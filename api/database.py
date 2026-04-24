@@ -2,9 +2,12 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import DeclarativeBase
 from api.config import DATABASE_URL
 
-_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+_url = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+_url = _url.replace("postgres://", "postgresql+asyncpg://")
 
-engine = create_async_engine(DATABASE_URL, connect_args=_connect_args, echo=False)
+_connect_args = {"check_same_thread": False} if _url.startswith("sqlite") else {}
+
+engine = create_async_engine(_url, connect_args=_connect_args, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
