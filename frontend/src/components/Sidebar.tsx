@@ -1,25 +1,25 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  LayoutDashboard, Users, CalendarDays, Image, PlusCircle,
-  Inbox, GitBranch, LogOut, Calendar,
+  LayoutDashboard, Users, CalendarDays, PlusCircle,
+  Inbox, MessageSquare, LogOut, History,
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 
 interface NavItem { label: string; to: string; icon: React.ElementType }
 
 const ADMIN_NAV: NavItem[] = [
-  { label: 'Dashboard',          to: '/admin/dashboard',  icon: LayoutDashboard },
-  { label: 'Campaign Calendar',  to: '/admin/calendar',   icon: Calendar },
-  { label: 'Content Queue',      to: '/admin/queue',      icon: Image },
-  { label: 'Campaigns',          to: '/admin/campaigns',  icon: CalendarDays },
-  { label: 'Clients',            to: '/admin/clients',    icon: Users },
-  { label: 'Onboarding',         to: '/admin/onboarding', icon: PlusCircle },
+  { label: 'Dashboard',     to: '/admin/dashboard',  icon: LayoutDashboard },
+  { label: 'Campaign plan', to: '/admin/plan',        icon: CalendarDays },
+  { label: 'Suggestions',   to: '/admin/suggestions', icon: MessageSquare },
+  { label: 'Clients',       to: '/admin/clients',     icon: Users },
+  { label: 'Onboarding',    to: '/admin/onboarding',  icon: PlusCircle },
 ]
 
 const DESIGNER_NAV: NavItem[] = [
-  { label: 'Queue',     to: '/designer/queue',     icon: Inbox },
-  { label: 'Revisions', to: '/designer/revisions', icon: GitBranch },
+  { label: 'Campaign plan', to: '/designer/plan',        icon: CalendarDays },
+  { label: 'Suggestions',   to: '/designer/suggestions', icon: MessageSquare },
+  { label: 'History',       to: '/designer/revisions',   icon: History },
 ]
 
 const NAVY     = '#1a2d82'

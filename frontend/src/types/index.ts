@@ -20,10 +20,13 @@ export interface Brand {
 export type ContentStatus =
   | 'pending'
   | 'generating'
+  | 'ready_for_internal_review'
+  | 'internal_approved'
   | 'ready_for_approval'
   | 'changes_requested'
   | 'approved'
   | 'published'
+  | 'cancelled'
   | 'error'
 
 export interface CopyJson {
@@ -44,6 +47,7 @@ export interface CopyJson {
 export interface ContentItem {
   id: number
   plan_id: number | null
+  campaign_id: number | null
   brand_key: string
   product_name: string
   campaign: string
@@ -69,6 +73,24 @@ export interface ContentItem {
   updated_at: string
 }
 
+export interface Campaign {
+  id: number
+  brand_key: string
+  name: string
+  theme: string | null
+  visual_direction: string | null
+  month_label: string | null
+  year: number | null
+  start_date: string | null
+  end_date: string | null
+  created_by: number | null
+  status: 'active' | 'draft' | 'complete'
+  notes: string | null
+  created_at: string
+  updated_at: string
+  posts?: ContentItem[]
+}
+
 export interface CampaignPlan {
   id: number
   brand_key: string
@@ -77,6 +99,39 @@ export interface CampaignPlan {
   plan_json: unknown[]
   created_at: string
   updated_at: string
+}
+
+export interface ContentComment {
+  id: number
+  content_item_id: number
+  sender_role: 'admin' | 'designer' | 'client' | 'system'
+  sender_name: string
+  message: string
+  is_ai_revision: boolean
+  is_internal: boolean
+  created_at: string
+}
+
+export interface DesignerSuggestion {
+  id: number
+  content_item_id: number
+  designer_id: number
+  suggestion_type: 'cancel' | 'edit' | 'regenerate_image'
+  message: string
+  status: 'pending' | 'accepted' | 'rejected'
+  admin_response: string | null
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface HolidayEvent {
+  id: number
+  brand_key: string | null
+  name: string
+  date: string
+  type: 'holiday' | 'promo' | 'brand_event' | 'client_event'
+  notes: string | null
+  created_at: string
 }
 
 export interface Notification {

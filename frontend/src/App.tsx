@@ -9,6 +9,7 @@ import AdminCampaignPlan from './pages/admin/CampaignPlan'
 import AdminCalendar from './pages/admin/Calendar'
 import AdminContentQueue from './pages/admin/ContentQueue'
 import AdminOnboarding from './pages/admin/Onboarding'
+import AdminPlan from './pages/admin/Plan'
 import DesignerQueue from './pages/designer/Queue'
 import DesignerRevisions from './pages/designer/Revisions'
 import DesignerContentDetail from './pages/designer/ContentDetail'
@@ -41,14 +42,18 @@ export default function App() {
         <Route path="/login" element={<Login />} />
 
         <Route path="/admin/dashboard" element={<RoleGate allowed={['admin']}><AdminDashboard /></RoleGate>} />
+        <Route path="/admin/plan" element={<RoleGate allowed={['admin']}><AdminPlan /></RoleGate>} />
         <Route path="/admin/clients" element={<RoleGate allowed={['admin']}><AdminClients /></RoleGate>} />
         <Route path="/admin/campaigns" element={<RoleGate allowed={['admin']}><AdminCampaignPlan /></RoleGate>} />
         <Route path="/admin/calendar" element={<RoleGate allowed={['admin']}><AdminCalendar /></RoleGate>} />
         <Route path="/admin/queue" element={<RoleGate allowed={['admin']}><AdminContentQueue /></RoleGate>} />
         <Route path="/admin/onboarding" element={<RoleGate allowed={['admin']}><AdminOnboarding /></RoleGate>} />
+        <Route path="/admin/suggestions" element={<RoleGate allowed={['admin']}><AdminPlan /></RoleGate>} />
 
+        <Route path="/designer/plan" element={<RoleGate allowed={['admin', 'designer']}><AdminPlan /></RoleGate>} />
         <Route path="/designer/queue" element={<RoleGate allowed={['admin', 'designer']}><DesignerQueue /></RoleGate>} />
         <Route path="/designer/revisions" element={<RoleGate allowed={['admin', 'designer']}><DesignerRevisions /></RoleGate>} />
+        <Route path="/designer/suggestions" element={<RoleGate allowed={['admin', 'designer']}><DesignerRevisions /></RoleGate>} />
         <Route path="/designer/content/:id" element={<RoleGate allowed={['admin', 'designer']}><DesignerContentDetail /></RoleGate>} />
 
         <Route path="/client/review" element={<RoleGate allowed={['client']}><ClientReviewList /></RoleGate>} />

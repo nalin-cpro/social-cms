@@ -3,12 +3,17 @@ from sqlalchemy import String, Text, DateTime, JSON, Float, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from api.database import Base
 
+# Status values:
+# pending | generating | ready_for_internal_review | internal_approved |
+# ready_for_approval | changes_requested | approved | published | cancelled | error
+
 
 class ContentItem(Base):
     __tablename__ = "content_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     plan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("campaign_plans.id"), nullable=True)
+    campaign_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("campaigns.id"), nullable=True, index=True)
     brand_key: Mapped[str] = mapped_column(String(50), ForeignKey("brands.key"), nullable=False, index=True)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     campaign: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -40,4 +45,12 @@ class ContentItem(Base):
 
     plan: Mapped["CampaignPlan | None"] = relationship(  # noqa: F821
         "CampaignPlan", back_populates="content_items", lazy="raise"
+    )
+    campaign_obj: Mapped["Campaign | None"] = relationship(  # noqa: F821
+        "Campaign", back_populates="posts", lazy="raise",
+        foreign_keys=[campaign_id],
+    )
+    comments: Mapped[list["ContentComment"]] = relationship(  # noqa: F821
+        "ContentComment", back_populates="content_item", lazy="raise",
+        cascade="all, delete-orphan",
     )

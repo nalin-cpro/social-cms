@@ -3,15 +3,13 @@ import Sidebar from '../../components/Sidebar'
 import { api } from '../../api/client'
 import { ContentItem, Brand } from '../../types'
 import StatusBadge from '../../components/StatusBadge'
-import { Image, Clock, CheckCircle, AlertTriangle, Play, Loader2, X } from 'lucide-react'
-
-const STATUS_ORDER = ['pending', 'generating', 'ready_for_approval', 'changes_requested', 'approved', 'error']
+import { LayoutGrid, Clock, CheckCircle, Users, Play, Loader2, X } from 'lucide-react'
 
 const STAT_ACCENT: Record<string, string> = {
-  total:    '#1a2d82',
-  pending:  '#D97706',
+  review:   '#D97706',
+  client:   '#7c3aed',
   approved: '#16A34A',
-  flagged:  '#DC2626',
+  total:    '#1a2d82',
 }
 
 export default function AdminDashboard() {
@@ -29,10 +27,12 @@ export default function AdminDashboard() {
     api.get<Brand[]>('/brands').then(setBrands)
   }, [])
 
-  const counts = STATUS_ORDER.reduce((acc, s) => {
-    acc[s] = items.filter(i => i.status === s).length
-    return acc
-  }, {} as Record<string, number>)
+  const counts = {
+    review:   items.filter(i => i.status === 'ready_for_internal_review').length,
+    client:   items.filter(i => i.status === 'ready_for_approval').length,
+    approved: items.filter(i => i.status === 'approved' || i.status === 'published').length,
+    total:    items.length,
+  }
 
   const runPipeline = async () => {
     setPipelineRunning(true)
@@ -48,10 +48,10 @@ export default function AdminDashboard() {
   }
 
   const statCards = [
-    { label: 'Total Posts',     value: items.length,                                                        icon: Image,        accentKey: 'total' },
-    { label: 'Pending Review',  value: counts['ready_for_approval'] ?? 0,                                   icon: Clock,        accentKey: 'pending' },
-    { label: 'Approved',        value: counts['approved'] ?? 0,                                             icon: CheckCircle,  accentKey: 'approved' },
-    { label: 'Needs Attention', value: (counts['error'] ?? 0) + (counts['changes_requested'] ?? 0),         icon: AlertTriangle, accentKey: 'flagged' },
+    { label: 'Awaiting review', value: counts.review,   icon: Clock,        accentKey: 'review' },
+    { label: 'With client',     value: counts.client,   icon: Users,        accentKey: 'client' },
+    { label: 'Approved',        value: counts.approved, icon: CheckCircle,  accentKey: 'approved' },
+    { label: 'Total this month',value: counts.total,    icon: LayoutGrid,   accentKey: 'total' },
   ]
 
   return (
