@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Loader2, Zap, Layout, CheckSquare, CalendarRange } from 'lucide-react'
 
@@ -10,17 +10,17 @@ const FEATURES = [
 ]
 
 export default function Login() {
-  const { login, user } = useAuth()
+  const { login, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  if (user) {
-    if (user.role === 'admin') navigate('/admin/dashboard', { replace: true })
-    else if (user.role === 'designer') navigate('/designer/queue', { replace: true })
-    else navigate('/client/review', { replace: true })
+  if (!authLoading && user) {
+    if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />
+    if (user.role === 'designer') return <Navigate to="/designer/queue" replace />
+    return <Navigate to="/client/review" replace />
   }
 
   const handleSubmit = async (e: FormEvent) => {
