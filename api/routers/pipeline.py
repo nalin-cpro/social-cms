@@ -196,6 +196,46 @@ async def run_campaign(
     return run
 
 
+# ── POST /pipeline/test-single ───────────────────────────────────────────────
+# Runs the pipeline synchronously inside this request — no thread, no event loop
+# juggling. Use this to confirm the pipeline works before relying on background runs.
+
+@router.post("/test-single")
+async def test_single_post_sync(
+    item_id: int,
+    mode: str = "copy_only",
+    test_mode: bool = True,
+    _: Annotated[User, Depends(require_roles("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from sqlalchemy import select
+    from src.pipeline_db import process_item_db
+
+    result = await db.execute(select(ContentItem).where(ContentItem.id == item_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"ContentItem {item_id} not found")
+
+    run = await _create_run(db, item.brand_key, mode, None, False, test_mode)
+    logger.info("test-single: item_id=%d product=%s mode=%s test_mode=%s run_id=%d",
+                item_id, item.product_name, mode, test_mode, run.id)
+
+    outcome = await process_item_db(db, item, run.id, mode=mode, test_mode=test_mode)
+
+    await db.refresh(item)
+    return {
+        "outcome": outcome,
+        "item_id": item_id,
+        "product_name": item.product_name,
+        "status": item.status,
+        "qc_score": item.qc_score,
+        "copy_json": item.copy_json,
+        "feed_post_url": item.feed_post_url,
+        "story_1_url": item.story_1_url,
+        "run_id": run.id,
+    }
+
+
 # ── GET /pipeline/status ──────────────────────────────────────────────────────
 
 @router.get("/status", response_model=list[PipelineRunRead])

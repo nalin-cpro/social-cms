@@ -159,82 +159,115 @@ async def _run_async(
     mode: str,
     campaign_id: int | None,
 ) -> None:
-    from sqlalchemy import select, or_
-    from api.database import AsyncSessionLocal
+    import os
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
     from api.models.content import ContentItem
-    from api.models.pipeline_run import PipelineRun
 
-    async with AsyncSessionLocal() as session:
-        # Build item query
-        q = select(ContentItem).where(ContentItem.status == "pending")
+    # Build a fresh engine bound to THIS thread's event loop.
+    # The module-level engine in api.database is bound to uvicorn's loop; reusing it
+    # from a background thread's asyncio.run() causes asyncpg to raise
+    # "Future attached to a different loop", silently crashing the thread and
+    # leaving items stuck at status='generating'.
+    db_url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./dev.db")
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://").replace(
+        "postgres://", "postgresql+asyncpg://"
+    )
+    connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
+    _engine = create_async_engine(db_url, connect_args=connect_args, echo=False)
+    _SessionFactory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
-        if item_ids:
-            q = q.where(ContentItem.id.in_(item_ids))
-        else:
-            if brand_key:
-                q = q.where(ContentItem.brand_key == brand_key)
-            if campaign_id is not None:
-                q = q.where(ContentItem.campaign_id == campaign_id)
-            if month_label:
-                prefix = _month_label_to_prefix(month_label)
-                if prefix:
-                    q = q.where(ContentItem.scheduled_date.startswith(prefix))
-            if start_date:
-                q = q.where(ContentItem.scheduled_date >= start_date)
-            if end_date:
-                q = q.where(ContentItem.scheduled_date <= end_date)
+    try:
+        async with _SessionFactory() as session:
+            # Build item query
+            q = select(ContentItem).where(ContentItem.status == "pending")
 
-        q = q.order_by(ContentItem.scheduled_date.asc().nullslast(),
-                       ContentItem.created_at.asc()).limit(limit)
-
-        result = await session.execute(q)
-        items = list(result.scalars().all())
-
-        logger.info(
-            "Pipeline run %d — %d items to process | mode=%s test=%s brand=%s",
-            run_id, len(items), mode, test_mode, brand_key,
-        )
-
-        if not items:
-            await _patch_run(
-                session, run_id,
-                status="complete",
-                completed_at=datetime.utcnow(),
-                error_log="No pending items matched the filters.",
-            )
-            return
-
-        ready = 0
-        errored = 0
-        errors: list[str] = []
-
-        for item in items:
-            outcome = await process_item_db(session, item, run_id, mode=mode, test_mode=test_mode)
-            if outcome == "ready":
-                ready += 1
+            if item_ids:
+                q = q.where(ContentItem.id.in_(item_ids))
             else:
-                errored += 1
-                errors.append(f"Item {item.id} ({item.product_name}): pipeline error")
+                if brand_key:
+                    q = q.where(ContentItem.brand_key == brand_key)
+                if campaign_id is not None:
+                    q = q.where(ContentItem.campaign_id == campaign_id)
+                if month_label:
+                    prefix = _month_label_to_prefix(month_label)
+                    if prefix:
+                        q = q.where(ContentItem.scheduled_date.startswith(prefix))
+                if start_date:
+                    q = q.where(ContentItem.scheduled_date >= start_date)
+                if end_date:
+                    q = q.where(ContentItem.scheduled_date <= end_date)
 
-            await _patch_run(
-                session, run_id,
-                posts_processed=ready + errored,
-                posts_ready=ready,
-                posts_errored=errored,
+            q = q.order_by(
+                ContentItem.scheduled_date.asc().nullslast(),
+                ContentItem.created_at.asc(),
+            ).limit(limit)
+
+            result = await session.execute(q)
+            items = list(result.scalars().all())
+
+            logger.info(
+                "Pipeline run %d — %d items to process | mode=%s test=%s brand=%s",
+                run_id, len(items), mode, test_mode, brand_key,
             )
 
-        final_status = "failed" if errored > 0 and ready == 0 else "complete"
-        await _patch_run(
-            session, run_id,
-            status=final_status,
-            completed_at=datetime.utcnow(),
-            current_post=None,
-            error_log="\n".join(errors) if errors else None,
-        )
-        logger.info(
-            "Pipeline run %d complete — %d ready, %d errors, status=%s",
-            run_id, ready, errored, final_status,
-        )
+            if not items:
+                await _patch_run(
+                    session, run_id,
+                    status="complete",
+                    completed_at=datetime.utcnow(),
+                    error_log="No pending items matched the filters.",
+                )
+                return
+
+            ready = 0
+            errored = 0
+            errors: list[str] = []
+
+            for item in items:
+                outcome = await process_item_db(session, item, run_id, mode=mode, test_mode=test_mode)
+                if outcome == "ready":
+                    ready += 1
+                else:
+                    errored += 1
+                    errors.append(f"Item {item.id} ({item.product_name}): pipeline error")
+
+                await _patch_run(
+                    session, run_id,
+                    posts_processed=ready + errored,
+                    posts_ready=ready,
+                    posts_errored=errored,
+                )
+
+            final_status = "failed" if errored > 0 and ready == 0 else "complete"
+            await _patch_run(
+                session, run_id,
+                status=final_status,
+                completed_at=datetime.utcnow(),
+                current_post=None,
+                error_log="\n".join(errors) if errors else None,
+            )
+            logger.info(
+                "Pipeline run %d complete — %d ready, %d errors, status=%s",
+                run_id, ready, errored, final_status,
+            )
+
+    except Exception as exc:
+        logger.error("Pipeline run %d crashed: %s\n%s", run_id, exc, traceback.format_exc())
+        # Best-effort: mark the run failed so it doesn't stay 'running' forever
+        try:
+            async with _SessionFactory() as session:
+                await _patch_run(
+                    session, run_id,
+                    status="failed",
+                    completed_at=datetime.utcnow(),
+                    error_log=f"Thread crash: {exc}\n{traceback.format_exc()}",
+                )
+        except Exception:
+            pass
+
+    finally:
+        await _engine.dispose()
 
 
 # ── Public sync entry point ───────────────────────────────────────────────────
