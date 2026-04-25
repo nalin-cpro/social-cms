@@ -83,13 +83,19 @@ async def reset(keep_outputs: bool = False) -> None:
         outputs = Path(__file__).parent.parent / "outputs"
         if outputs.exists():
             removed = 0
+            skipped = 0
             for d in outputs.iterdir():
                 if d.is_dir():
-                    shutil.rmtree(d)
-                    removed += 1
-            # Recreate empty outputs dir
+                    try:
+                        shutil.rmtree(d)
+                        removed += 1
+                    except PermissionError:
+                        skipped += 1
             outputs.mkdir(exist_ok=True)
-            print(f"Cleared outputs/ ({removed} brand folder(s) removed)")
+            msg = f"Cleared outputs/ ({removed} folder(s) removed)"
+            if skipped:
+                msg += f", {skipped} skipped (permission denied — run as root or clean manually)"
+            print(msg)
         else:
             outputs.mkdir(exist_ok=True)
             print("outputs/ created (was missing)")
