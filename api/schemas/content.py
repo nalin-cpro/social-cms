@@ -36,11 +36,6 @@ class CommentRequest(BaseModel):
     comment: str
 
 
-class PipelineRunRequest(BaseModel):
-    brand_key: str
-    month_label: str
-    dry_run: bool = False
-
 
 class InternalCommentRequest(BaseModel):
     message: str

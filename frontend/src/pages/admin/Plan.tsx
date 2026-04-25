@@ -10,7 +10,7 @@ import {
 } from '../../types'
 import {
   ChevronDown, ChevronRight, Plus, Calendar, List,
-  Play, Loader2, X, Image as ImageIcon, Check,
+  Play, Loader2, X, Image as ImageIcon, Check, FileText, FlaskConical,
 } from 'lucide-react'
 
 const NAVY = '#1a2d82'
@@ -48,18 +48,21 @@ function rowBorder(status: string): string {
 
 // ── Campaign section ──────────────────────────────────────────────────────────
 function CampaignSection({
-  campaign, posts, isAdmin, onPostClick, onGenerate, generating,
+  campaign, posts, isAdmin, testMode, onPostClick, onGenerate, generatingId,
 }: {
   campaign: Campaign
   posts: ContentItem[]
   isAdmin: boolean
+  testMode: boolean
   onPostClick: (p: ContentItem) => void
-  onGenerate: (id: number) => void
-  generating: boolean
+  onGenerate: (campaignId: number, mode: 'all' | 'copy_only' | 'image_only') => void
+  generatingId: number | null
 }) {
   const [open, setOpen] = useState(true)
+  const generating = generatingId === campaign.id
 
   const approved = posts.filter(p => ['approved', 'published'].includes(p.status)).length
+  const pending = posts.filter(p => p.status === 'pending').length
   const pct = posts.length ? Math.round((approved / posts.length) * 100) : 0
 
   return (
@@ -82,26 +85,43 @@ function CampaignSection({
             {campaign.start_date && campaign.end_date && (
               <span className="text-xs" style={{ color: '#8892b8' }}>{campaign.start_date} → {campaign.end_date}</span>
             )}
+            {testMode && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(124,58,237,0.1)', color: '#7c3aed' }}>
+                test mode
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-4 flex-shrink-0 ml-4">
-          <div className="text-right hidden md:block">
-            <p className="text-xs" style={{ color: '#8892b8' }}>{approved}/{posts.length} approved</p>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-4" onClick={e => e.stopPropagation()}>
+          <div className="text-right hidden md:block mr-2">
+            <p className="text-xs" style={{ color: '#8892b8' }}>{approved}/{posts.length} approved · {pending} pending</p>
             <div className="w-24 h-1 rounded-full mt-1" style={{ background: '#dde2f0' }}>
               <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#16A34A', transition: 'width 0.4s' }} />
             </div>
           </div>
           <StatusBadge status={campaign.status} small />
-          {isAdmin && (
-            <button
-              onClick={e => { e.stopPropagation(); onGenerate(campaign.id) }}
-              disabled={generating}
-              className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
-              style={{ background: NAVY, color: '#fff' }}
-            >
-              {generating ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-              Generate
-            </button>
+          {isAdmin && pending > 0 && (
+            <>
+              <button
+                onClick={() => onGenerate(campaign.id, 'copy_only')}
+                disabled={generating}
+                title="Generate copy only (fast)"
+                className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
+                style={{ border: '1px solid #dde2f0', color: '#4a5280', background: '#fff' }}
+              >
+                <FileText size={11} /> Copy
+              </button>
+              <button
+                onClick={() => onGenerate(campaign.id, 'all')}
+                disabled={generating}
+                title={`Generate all pending posts${testMode ? ' (test mode)' : ''}`}
+                className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+                style={{ background: NAVY, color: '#fff' }}
+              >
+                {generating ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                Generate {pending > 0 ? `(${pending})` : 'all'}
+              </button>
+            </>
           )}
         </div>
       </button>
@@ -113,7 +133,14 @@ function CampaignSection({
             <p className="text-xs text-center py-6" style={{ color: '#8892b8' }}>No posts in this campaign yet</p>
           )}
           {posts.map(post => (
-            <PostRow key={post.id} post={post} isAdmin={isAdmin} onClick={() => onPostClick(post)} />
+            <PostRow
+              key={post.id}
+              post={post}
+              isAdmin={isAdmin}
+              testMode={testMode}
+              onClick={() => onPostClick(post)}
+              onRunPost={(mode) => onGenerate(-post.id, mode)}
+            />
           ))}
         </div>
       )}
@@ -121,28 +148,44 @@ function CampaignSection({
   )
 }
 
-function PostRow({ post, isAdmin, onClick }: { post: ContentItem; isAdmin: boolean; onClick: () => void }) {
+function PostRow({
+  post, isAdmin, testMode, onClick, onRunPost,
+}: {
+  post: ContentItem
+  isAdmin: boolean
+  testMode: boolean
+  onClick: () => void
+  onRunPost: (mode: 'all' | 'copy_only' | 'image_only') => void
+}) {
+  const [hovering, setHovering] = useState(false)
   const isCancelled = post.status === 'cancelled'
+  const isPending = post.status === 'pending'
+  const isGenerating = post.status === 'generating'
   const borderLeft = rowBorder(post.status)
+  const needsImages = ['instagram_post', 'instagram_stories', 'tiktok'].includes(post.channel)
 
   return (
     <div
-      onClick={onClick}
-      className="flex items-center gap-3 px-5 py-2.5 cursor-pointer"
+      className="flex items-center gap-3 px-5 py-2.5"
       style={{
         borderBottom: '1px solid #f4f6fb',
         borderLeft: `3px solid ${borderLeft}`,
         opacity: isCancelled ? 0.5 : 1,
+        background: hovering ? '#f8f9ff' : 'transparent',
+        cursor: 'pointer',
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = '#f8f9ff')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      onClick={onClick}
     >
       {/* Thumb */}
       <div className="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center"
         style={{ background: '#f4f6fb', border: '1px solid #dde2f0' }}>
-        {post.feed_post_url
-          ? <img src={post.feed_post_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-          : <ImageIcon size={14} style={{ color: '#dde2f0' }} />
+        {isGenerating
+          ? <Loader2 size={14} className="animate-spin" style={{ color: '#1d4ed8' }} />
+          : post.feed_post_url
+            ? <img src={post.feed_post_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+            : <ImageIcon size={14} style={{ color: '#dde2f0' }} />
         }
       </div>
 
@@ -164,10 +207,44 @@ function PostRow({ post, isAdmin, onClick }: { post: ContentItem; isAdmin: boole
         <ChannelBadge channel={post.channel} />
       </div>
 
-      {/* Status */}
-      <div className="flex-shrink-0 w-36 text-right">
-        <StatusBadge status={post.status} small />
-      </div>
+      {/* Per-post action buttons (admin + pending only) */}
+      {isAdmin && isPending && hovering && (
+        <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={() => onRunPost('copy_only')}
+            title="Generate copy only"
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors"
+            style={{ border: '1px solid #dde2f0', color: '#4a5280', background: '#fff' }}
+          >
+            <FileText size={10} /> Copy
+          </button>
+          {needsImages && (
+            <button
+              onClick={() => onRunPost('image_only')}
+              title={`Generate image${testMode ? ' (test)' : ''}`}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors"
+              style={{ border: '1px solid #dde2f0', color: '#4a5280', background: '#fff' }}
+            >
+              <ImageIcon size={10} /> {testMode && <FlaskConical size={9} style={{ color: '#7c3aed' }} />} Image
+            </button>
+          )}
+          <button
+            onClick={() => onRunPost('all')}
+            title={`Generate all${testMode ? ' (test mode)' : ''}`}
+            className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md transition-colors"
+            style={{ background: '#1a2d82', color: '#fff' }}
+          >
+            <Play size={10} /> {testMode ? <FlaskConical size={9} /> : null} Gen
+          </button>
+        </div>
+      )}
+
+      {/* Status (hidden when showing buttons to avoid layout shift) */}
+      {!(isAdmin && isPending && hovering) && (
+        <div className="flex-shrink-0 w-36 text-right">
+          <StatusBadge status={post.status} small />
+        </div>
+      )}
     </div>
   )
 }
@@ -548,6 +625,7 @@ function NewCampaignModal({ brands, onClose, onCreated }: {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function PlanPage() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [view, setView] = useState<'plan' | 'calendar'>('plan')
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [posts, setPosts] = useState<ContentItem[]>([])
@@ -557,6 +635,7 @@ export default function PlanPage() {
   const [drawerPost, setDrawerPost] = useState<ContentItem | null>(null)
   const [showNewCampaign, setShowNewCampaign] = useState(false)
   const [generatingId, setGeneratingId] = useState<number | null>(null)
+  const [testMode, setTestMode] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const isAdmin = user?.role === 'admin'
@@ -596,12 +675,54 @@ export default function PlanPage() {
     setDrawerPost(updated)
   }
 
-  const handleGenerate = async (campaignId: number) => {
-    setGeneratingId(campaignId)
+  const refreshPosts = () => {
+    const params = new URLSearchParams({ brand: selectedBrand })
+    if (selectedMonth) params.set('month', selectedMonth)
+    api.get<ContentItem[]>(`/content?${params}`).then(setPosts)
+  }
+
+  // Handles both campaign-level (positive id) and post-level (negative = post id) runs
+  const handleGenerate = async (id: number, mode: 'all' | 'copy_only' | 'image_only') => {
+    const isPost = id < 0
+    const realId = isPost ? -id : id
+    setGeneratingId(id)
     try {
-      await api.post(`/campaigns/${campaignId}/generate`)
+      if (isPost) {
+        // Mark the post as generating optimistically
+        setPosts(prev => prev.map(p => p.id === realId ? { ...p, status: 'generating' } : p))
+        await api.post(`/pipeline/run-post/${realId}`, { mode, test_mode: testMode })
+        toast(`${mode === 'copy_only' ? 'Copy' : mode === 'image_only' ? 'Image' : 'Full'} generation started`)
+        // Poll for this post to finish
+        const poll = setInterval(async () => {
+          try {
+            const updated = await api.get<import('../../types').ContentItem>(`/content/${realId}`)
+            setPosts(prev => prev.map(p => p.id === realId ? updated : p))
+            if (drawerPost?.id === realId) setDrawerPost(updated)
+            if (updated.status !== 'generating') clearInterval(poll)
+          } catch { clearInterval(poll) }
+        }, 3000)
+      } else {
+        const pendingCount = (postsByCampaign[realId] || []).filter(p => p.status === 'pending').length
+        if (mode === 'all' && pendingCount > 2) {
+          const ok = window.confirm(
+            `This will generate ${pendingCount} posts${testMode ? ' in test mode' : ''} and may take ${Math.ceil(pendingCount * 1.5)} minutes. Proceed?`
+          )
+          if (!ok) { setGeneratingId(null); return }
+        }
+        await api.post(`/pipeline/run-campaign/${realId}`, {
+          brand_key: selectedBrand,
+          mode,
+          limit: 25,
+          test_mode: testMode,
+        })
+        toast(`Generating ${pendingCount} post${pendingCount !== 1 ? 's' : ''}…`)
+        setTimeout(refreshPosts, 4000)
+        setTimeout(refreshPosts, 10000)
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Failed to start pipeline', 'error')
     } finally {
-      setTimeout(() => setGeneratingId(null), 2000)
+      setTimeout(() => setGeneratingId(g => g === id ? null : g), 2000)
     }
   }
 
@@ -644,6 +765,14 @@ export default function PlanPage() {
           </div>
 
           {isAdmin && (
+            <label className="flex items-center gap-1.5 cursor-pointer" title="Use placeholder images instead of fal.ai (saves API credits)">
+              <input type="checkbox" checked={testMode} onChange={e => setTestMode(e.target.checked)} className="rounded" />
+              <FlaskConical size={13} style={{ color: testMode ? '#7c3aed' : '#8892b8' }} />
+              <span className="text-xs font-medium" style={{ color: testMode ? '#7c3aed' : '#8892b8' }}>Test mode</span>
+            </label>
+          )}
+
+          {isAdmin && (
             <button onClick={() => setShowNewCampaign(true)}
               className="flex items-center gap-1.5 text-sm font-semibold px-4 py-1.5 rounded-lg"
               style={{ background: NAVY, color: '#fff' }}>
@@ -678,9 +807,10 @@ export default function PlanPage() {
                   campaign={c}
                   posts={postsByCampaign[c.id] || []}
                   isAdmin={isAdmin}
+                  testMode={testMode}
                   onPostClick={setDrawerPost}
                   onGenerate={handleGenerate}
-                  generating={generatingId === c.id}
+                  generatingId={generatingId}
                 />
               ))}
 
@@ -689,7 +819,14 @@ export default function PlanPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: '#8892b8' }}>Unplanned posts</p>
                   <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #dde2f0', background: '#fff' }}>
                     {unplanned.map(p => (
-                      <PostRow key={p.id} post={p} isAdmin={isAdmin} onClick={() => setDrawerPost(p)} />
+                      <PostRow
+                        key={p.id}
+                        post={p}
+                        isAdmin={isAdmin}
+                        testMode={testMode}
+                        onClick={() => setDrawerPost(p)}
+                        onRunPost={(mode) => handleGenerate(-p.id, mode)}
+                      />
                     ))}
                   </div>
                 </div>

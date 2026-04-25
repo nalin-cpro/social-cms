@@ -16,6 +16,7 @@ from api.schemas.content import (
     ContentItemRead, CommentRequest,
     InternalCommentRequest, RegenerateImageRequest, ContentItemUpdate, ContentItemCreate,
 )
+
 from api.schemas.comment import ContentCommentRead, ContentCommentCreate
 
 router = APIRouter(prefix="/content", tags=["content"])

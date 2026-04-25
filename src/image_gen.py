@@ -221,6 +221,126 @@ def generate_lifestyle_image(
         return False, ""
 
 
+# ── High-level generate_images (used by pipeline_db + content router) ─────────
+
+def _to_relative_url(path) -> str | None:
+    if not path:
+        return None
+    p = Path(path)
+    try:
+        rel = p.relative_to("outputs")
+        return f"/outputs/{rel.as_posix()}"
+    except ValueError:
+        return f"/outputs/{p.name}"
+
+
+def _generate_placeholder_images(brand_key: str, product_name: str) -> dict:
+    """Test mode: copy assets/placeholder.jpg to outputs/ and return URLs."""
+    placeholder = Path(__file__).parent.parent / "assets" / "placeholder.jpg"
+    if not placeholder.exists():
+        logger.warning("Placeholder not found at %s — returning empty", placeholder)
+        return {}
+
+    handle = _to_handle(product_name)
+    from datetime import date as _date
+    out_dir = Path("outputs") / brand_key.lower() / _date.today().isoformat()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    import shutil
+    paths = {
+        "feed":      out_dir / f"{handle}_feed_test.jpg",
+        "story_1":   out_dir / f"{handle}_story1_test.jpg",
+        "story_2":   out_dir / f"{handle}_story2_test.jpg",
+        "lifestyle": out_dir / f"{handle}_lifestyle_test.jpg",
+    }
+    for p in paths.values():
+        shutil.copy2(str(placeholder), str(p))
+
+    logger.info("Test mode — placeholder images written to %s", out_dir)
+    return {k: _to_relative_url(str(v)) for k, v in paths.items()}
+
+
+def generate_images(
+    brand_key: str,
+    product_name: str,
+    visual_direction: str,
+    channel: str,
+    scene: str = "",
+    scheduled_date: str = "",
+    test_mode: bool = False,
+    metadata: dict | None = None,
+) -> dict:
+    """
+    Generate all images for a content item.
+
+    Returns dict with keys: feed, story_1, story_2, lifestyle
+    (all /outputs/... relative URLs, or None if not generated).
+
+    Channels that don't need images return {}.
+    """
+    _CHANNELS_NEEDING_IMAGES = {"instagram_post", "instagram_stories", "tiktok"}
+    if channel not in _CHANNELS_NEEDING_IMAGES:
+        return {}
+
+    if test_mode or os.getenv("TEST_MODE", "").lower() == "true":
+        return _generate_placeholder_images(brand_key, product_name)
+
+    # Resolve product image URL
+    meta = metadata or {}
+    product_image_url = meta.get("image_url", "")
+    if not product_image_url:
+        try:
+            from src.shopify import get_product_metadata
+            meta = get_product_metadata(brand_key, product_name) or {}
+            product_image_url = meta.get("image_url", "")
+        except Exception as e:
+            logger.error("Could not fetch product image for '%s': %s", product_name, e)
+
+    if not product_image_url:
+        logger.error("No product image URL for '%s' — cannot generate images", product_name)
+        return {}
+
+    lifestyle_path = get_output_path(brand_key, product_name, scene=scene or "")
+    success, scene_used = generate_lifestyle_image(
+        brand_key=brand_key,
+        product_name=product_name,
+        campaign=visual_direction or "lifestyle editorial",
+        product_image_url=product_image_url,
+        output_path=lifestyle_path,
+        scene_name=scene or None,
+    )
+    if not success:
+        logger.error("Lifestyle image generation failed for '%s'", product_name)
+        return {}
+
+    # Composite into feed/story sizes
+    try:
+        from src.compositor import compose_all
+        from src.onboarding import load_brand
+        from datetime import date as _date
+
+        brand = load_brand(brand_key)
+        brand_name = brand.get("name", brand_key.upper())
+        website_url = brand.get("storefront_url", "").replace("https://", "")
+        price = meta.get("price", "")
+
+        out_dir = Path("outputs") / brand_key.lower() / _date.today().isoformat()
+        composite = compose_all(
+            lifestyle_path, brand_key, brand_name,
+            visual_direction or "editorial",
+            product_name, website_url, str(out_dir), price=price,
+        )
+        return {
+            "feed":      _to_relative_url(composite.get("feed_post_path")),
+            "story_1":   _to_relative_url(composite.get("story_1_path")),
+            "story_2":   _to_relative_url(composite.get("story_2_path")),
+            "lifestyle": _to_relative_url(lifestyle_path),
+        }
+    except Exception as exc:
+        logger.error("Composition failed for '%s': %s", product_name, exc)
+        return {"lifestyle": _to_relative_url(lifestyle_path)}
+
+
 if __name__ == "__main__":
     import subprocess
     from src.shopify import get_product_primary_image_url
