@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import get_current_user, require_roles
 from api.database import get_db
 from api.models.brand import Brand
+from api.models.brand_memory import BrandMemoryRule
 from api.models.user import User
 from api.schemas.brand import BrandRead, BrandUpdate
+from api.schemas.brand_memory import BrandMemoryRuleRead, BrandMemoryRuleCreate, BrandMemoryRulePatch
 
 router = APIRouter(prefix="/brands", tags=["brands"])
 
@@ -63,6 +65,87 @@ def _run_onboarding(brand_key: str) -> None:
     from src.onboarding import analyse_brand_instagram
     analyse_brand_instagram(brand_key)
 
+
+# ── Brand memory endpoints ────────────────────────────────────────────────────
+
+@router.get("/{key}/memory", response_model=list[BrandMemoryRuleRead])
+async def list_memory_rules(
+    key: str,
+    _: Annotated[User, Depends(require_roles("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    result = await db.execute(
+        select(BrandMemoryRule)
+        .where(BrandMemoryRule.brand_key == key)
+        .order_by(BrandMemoryRule.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/{key}/memory", response_model=BrandMemoryRuleRead, status_code=201)
+async def add_memory_rule(
+    key: str,
+    body: BrandMemoryRuleCreate,
+    _: Annotated[User, Depends(require_roles("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    rule = BrandMemoryRule(
+        brand_key=key,
+        rule_text=body.rule_text,
+        rule_type=body.rule_type,
+        source=body.source,
+        status="confirmed",  # manually added rules are auto-confirmed
+    )
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+@router.patch("/{key}/memory/{rule_id}", response_model=BrandMemoryRuleRead)
+async def update_memory_rule(
+    key: str,
+    rule_id: int,
+    body: BrandMemoryRulePatch,
+    current_user: Annotated[User, Depends(require_roles("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    result = await db.execute(
+        select(BrandMemoryRule)
+        .where(BrandMemoryRule.id == rule_id)
+        .where(BrandMemoryRule.brand_key == key)
+    )
+    rule = result.scalar_one_or_none()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    rule.status = body.status
+    if body.status == "confirmed":
+        rule.confirmed_by = current_user.id
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+@router.delete("/{key}/memory/{rule_id}", status_code=204)
+async def delete_memory_rule(
+    key: str,
+    rule_id: int,
+    _: Annotated[User, Depends(require_roles("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    result = await db.execute(
+        select(BrandMemoryRule)
+        .where(BrandMemoryRule.id == rule_id)
+        .where(BrandMemoryRule.brand_key == key)
+    )
+    rule = result.scalar_one_or_none()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    await db.delete(rule)
+    await db.commit()
+
+
+# ── Onboarding ────────────────────────────────────────────────────────────────
 
 @router.post("/{key}/onboard")
 async def onboard_brand(

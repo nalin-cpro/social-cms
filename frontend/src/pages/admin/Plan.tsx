@@ -688,11 +688,9 @@ export default function PlanPage() {
     setGeneratingId(id)
     try {
       if (isPost) {
-        // Mark the post as generating optimistically
         setPosts(prev => prev.map(p => p.id === realId ? { ...p, status: 'generating' } : p))
-        await api.post(`/pipeline/run-post/${realId}`, { mode, test_mode: testMode })
+        await api.post(`/pipeline/step/run-all`, { content_item_id: realId, test_mode: testMode })
         toast(`${mode === 'copy_only' ? 'Copy' : mode === 'image_only' ? 'Image' : 'Full'} generation started`)
-        // Poll for this post to finish
         const poll = setInterval(async () => {
           try {
             const updated = await api.get<import('../../types').ContentItem>(`/content/${realId}`)
@@ -709,8 +707,9 @@ export default function PlanPage() {
           )
           if (!ok) { setGeneratingId(null); return }
         }
-        await api.post(`/pipeline/run-campaign/${realId}`, {
+        await api.post(`/pipeline/campaign/run`, {
           brand_key: selectedBrand,
+          campaign_id: realId,
           mode,
           limit: 25,
           test_mode: testMode,

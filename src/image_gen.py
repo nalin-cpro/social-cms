@@ -1,11 +1,11 @@
 """
-Generates lifestyle product images using fal.ai FLUX Pro Kontext.
-Model: fal-ai/flux-pro/kontext
+Lifestyle image generation orchestrator.
 
-Scene rotation system: each run picks from a library of scenes defined
-in config/brands.json, producing visual variety across the same product.
+Builds prompts, delegates actual API calls to the configured ImageProvider,
+downloads results, runs the compositor, and returns /outputs/... URLs.
 
-Requires FAL_API_KEY in environment. fal-client reads it as FAL_KEY.
+Provider is resolved per brand from brands.json or the Brand DB record.
+Default provider: fal_flux (fal.ai FLUX Pro Kontext).
 """
 
 import json
@@ -17,7 +17,6 @@ from datetime import date
 from pathlib import Path
 
 import requests
-import fal_client
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,7 +24,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 _BRANDS_PATH = Path(__file__).parent.parent / "config" / "brands.json"
-_FAL_MODEL = "fal-ai/flux-pro/kontext"
 _BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -43,23 +41,48 @@ def load_brand_config(brand_key: str) -> dict:
 
 
 def _to_handle(name: str) -> str:
-    handle = name.lower().replace("'", "").replace("\u2019", "")
+    handle = name.lower().replace("'", "").replace("’", "")
     handle = re.sub(r"[^a-z0-9\s-]", "", handle)
     handle = re.sub(r"\s+", "-", handle.strip())
     return re.sub(r"-+", "-", handle)
+
+
+def _to_relative_url(path) -> str | None:
+    if not path:
+        return None
+    p = Path(path)
+    try:
+        rel = p.relative_to("outputs")
+        return f"/outputs/{rel.as_posix()}"
+    except ValueError:
+        return f"/outputs/{p.name}"
+
+
+def get_output_path(
+    brand_key: str,
+    product_name: str,
+    suffix: str = "lifestyle",
+    scene: str = "",
+) -> str:
+    handle = _to_handle(product_name)
+    today = date.today().isoformat()
+    scene_tag = f"_{scene}" if scene else ""
+    directory = Path("outputs") / brand_key.lower() / today
+    directory.mkdir(parents=True, exist_ok=True)
+    return str(directory / f"{handle}_{suffix}{scene_tag}.jpg")
 
 
 def build_image_prompt(
     brand_key: str,
     product_name: str,
     campaign: str,
-    scene_name: str = None,
+    scene_name: str | None = None,
+    mode: str = "lifestyle",
+    instruction: str = "",
 ) -> tuple[str, str]:
-    """Build a FLUX Kontext prompt with scene rotation + brand analysis injection.
+    """Build a generation prompt with scene rotation + brand analysis injection.
 
-    Returns (prompt, scene_name) so the caller knows which scene was used.
-    If scene_name is None a scene is picked at random from brand config.
-    Brand style rules from cached Claude Vision analysis are injected when available.
+    Returns (prompt, scene_name_used).
     """
     from src.onboarding import load_brand_analysis
 
@@ -67,14 +90,13 @@ def build_image_prompt(
     scenes = brand_config.get("scenes", [])
 
     if not scenes:
-        logger.warning("No scenes defined for brand '%s' — using generic prompt", brand_key)
+        logger.warning("No scenes defined for brand '%s' — using generic", brand_key)
         scene = {"name": "generic", "description": "Urban lifestyle setting, natural light."}
     elif scene_name:
         scene = next((s for s in scenes if s["name"] == scene_name), scenes[0])
     else:
         scene = random.choice(scenes)
 
-    # Infer outfit from product name
     product_lower = product_name.lower()
     if any(w in product_lower for w in ["sneaker", "slip on", "slip-on", "driver", "loafer", "moc"]):
         shoe_style = "leather sneaker"
@@ -86,7 +108,6 @@ def build_image_prompt(
         shoe_style = "leather shoe"
         outfit = "slim chinos or dark jeans, open collar shirt or light sweater"
 
-    # Load cached brand analysis and inject style rules if available
     analysis = load_brand_analysis(brand_key)
     style_addition = analysis.get("flux_style_prompt_addition", "")
     always_do = analysis.get("what_to_always_do", [])
@@ -97,11 +118,17 @@ def build_image_prompt(
         always_str = "; ".join(always_do[:3]) if always_do else ""
         never_str  = "; ".join(never_do[:3])  if never_do  else ""
         brand_rules = (
-            f"\nVisual style rules learned from analysing {brand_key.upper()}'s Instagram:\n"
+            f"\nVisual style rules learned from brand analysis:\n"
             + (f"Always: {always_str}\n" if always_str else "")
             + (f"Never: {never_str}\n"   if never_str  else "")
             + (f"Style: {style_addition}\n" if style_addition else "")
         )
+
+    mode_instruction = ""
+    if mode == "swap" and instruction:
+        mode_instruction = f"\nDesigner instruction: {instruction}\n"
+    elif mode == "style_ref" and instruction:
+        mode_instruction = f"\nStyle reference note: {instruction}\n"
 
     prompt = (
         f"Professional lifestyle photography for Milwaukee Boot Company.\n\n"
@@ -116,33 +143,47 @@ def build_image_prompt(
         f"Composition: rule of thirds, confident natural pose.\n"
         f"Quality: photorealistic, high-end fashion editorial, commercial photography standard.\n"
         + brand_rules
+        + mode_instruction
         + "Do NOT add text, logos, or watermarks."
     )
 
     logger.info(
-        "Prompt built | brand='%s' product='%s' scene='%s' campaign='%s' analysis=%s",
-        brand_key, product_name, scene["name"], campaign,
+        "Prompt built | brand='%s' product='%s' scene='%s' mode='%s' analysis=%s",
+        brand_key, product_name, scene["name"], mode,
         "injected" if analysis else "not available",
     )
     return prompt, scene["name"]
 
 
-def get_output_path(
-    brand_key: str,
-    product_name: str,
-    suffix: str = "lifestyle",
-    scene: str = "",
-) -> str:
-    """Return a dated output path and create the directory.
+def _download_image(url: str, output_path: str) -> None:
+    """Download an image from a CDN URL to a local path."""
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    resp = requests.get(
+        url,
+        headers={"User-Agent": _BROWSER_UA},
+        timeout=60,
+        stream=True,
+    )
+    resp.raise_for_status()
+    with open(output_path, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=8192):
+            f.write(chunk)
+    size_kb = os.path.getsize(output_path) // 1024
+    logger.info("Downloaded: %s (%d KB)", output_path, size_kb)
 
-    Pattern: outputs/{brand_key}/{YYYY-MM-DD}/{handle}_lifestyle[_{scene}].jpg
+
+def _get_brand_provider(brand_key: str):
+    """Load the configured ImageProvider for a brand.
+
+    Falls back to fal_flux if the brand record has no image_provider set
+    or if the brands.json config doesn't specify one.
     """
-    handle = _to_handle(product_name)
-    today = date.today().isoformat()
-    scene_tag = f"_{scene}" if scene else ""
-    directory = Path("outputs") / brand_key.lower() / today
-    directory.mkdir(parents=True, exist_ok=True)
-    return str(directory / f"{handle}_{suffix}{scene_tag}.jpg")
+    from src.image_providers import get_provider
+
+    # Try to load image_provider from brands.json first (fast, no DB)
+    brand_config = load_brand_config(brand_key)
+    provider_name = brand_config.get("image_provider", "fal_flux")
+    return get_provider(provider_name)
 
 
 def generate_lifestyle_image(
@@ -151,87 +192,34 @@ def generate_lifestyle_image(
     campaign: str,
     product_image_url: str,
     output_path: str,
-    scene_name: str = None,
+    scene_name: str | None = None,
+    mode: str = "lifestyle",
+    reference_image_url: str | None = None,
+    instruction: str = "",
 ) -> tuple[bool, str]:
-    """Generate a lifestyle scene via FLUX Kontext with scene rotation.
+    """Generate one lifestyle image via the configured provider.
 
-    Returns (True, scene_name) on success, (False, "") on any failure.
-    Never raises.
+    Returns (True, scene_name) on success, (False, "") on failure. Never raises.
     """
     try:
-        fal_api_key = os.getenv("FAL_API_KEY", "")
-        if not fal_api_key:
-            logger.error("FAL_API_KEY is not set — cannot generate image")
-            return False, ""
-
-        os.environ["FAL_KEY"] = fal_api_key
-
-        prompt, used_scene = build_image_prompt(brand_key, product_name, campaign, scene_name)
-
-        logger.info(
-            "Generating lifestyle image | scene='%s' | model=%s",
-            used_scene, _FAL_MODEL,
+        provider = _get_brand_provider(brand_key)
+        prompt, used_scene = build_image_prompt(
+            brand_key, product_name, campaign, scene_name, mode=mode, instruction=instruction
         )
-        logger.info("Product image URL: %s", product_image_url)
+        logger.info("Generating | mode=%s scene=%s provider=%s", mode, used_scene, type(provider).__name__)
 
-        result = fal_client.run(
-            _FAL_MODEL,
-            arguments={
-                "prompt": prompt,
-                "image_url": product_image_url,
-                "image_size": "square_hd",
-                "num_images": 1,
-                "output_format": "jpeg",
-                "guidance_scale": 3.5,
-                "strength": 0.85,
-            },
+        cdn_url = provider.generate(
+            product_image_url=product_image_url,
+            prompt=prompt,
+            mode=mode,
+            reference_image_url=reference_image_url,
         )
-
-        images = result.get("images", [])
-        if not images:
-            logger.warning("fal.ai returned empty images list (scene='%s')", used_scene)
-            return False, ""
-
-        image_url = images[0].get("url", "")
-        if not image_url:
-            logger.warning("fal.ai image entry has no URL (scene='%s'): %s", used_scene, images[0])
-            return False, ""
-
-        logger.info("Image URL received: %s", image_url)
-
-        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-        logger.info("Downloading to %s", output_path)
-        resp = requests.get(
-            image_url,
-            headers={"User-Agent": _BROWSER_UA},
-            timeout=60,
-            stream=True,
-        )
-        resp.raise_for_status()
-        with open(output_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        size_kb = os.path.getsize(output_path) // 1024
-        logger.info("Saved: %s (%d KB)", output_path, size_kb)
+        _download_image(cdn_url, output_path)
         return True, used_scene
 
     except Exception as exc:
         logger.error("generate_lifestyle_image failed (scene='%s'): %s", scene_name, exc)
         return False, ""
-
-
-# ── High-level generate_images (used by pipeline_db + content router) ─────────
-
-def _to_relative_url(path) -> str | None:
-    if not path:
-        return None
-    p = Path(path)
-    try:
-        rel = p.relative_to("outputs")
-        return f"/outputs/{rel.as_posix()}"
-    except ValueError:
-        return f"/outputs/{p.name}"
 
 
 def _generate_placeholder_images(brand_key: str, product_name: str) -> dict:
@@ -241,12 +229,11 @@ def _generate_placeholder_images(brand_key: str, product_name: str) -> dict:
         logger.warning("Placeholder not found at %s — returning empty", placeholder)
         return {}
 
+    import shutil
     handle = _to_handle(product_name)
-    from datetime import date as _date
-    out_dir = Path("outputs") / brand_key.lower() / _date.today().isoformat()
+    out_dir = Path("outputs") / brand_key.lower() / date.today().isoformat()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    import shutil
     paths = {
         "feed":      out_dir / f"{handle}_feed_test.jpg",
         "story_1":   out_dir / f"{handle}_story1_test.jpg",
@@ -269,13 +256,14 @@ def generate_images(
     scheduled_date: str = "",
     test_mode: bool = False,
     metadata: dict | None = None,
+    mode: str = "lifestyle",
+    reference_image_url: str | None = None,
+    instruction: str = "",
 ) -> dict:
-    """
-    Generate all images for a content item.
+    """Generate all images for a content item.
 
     Returns dict with keys: feed, story_1, story_2, lifestyle
     (all /outputs/... relative URLs, or None if not generated).
-
     Channels that don't need images return {}.
     """
     _CHANNELS_NEEDING_IMAGES = {"instagram_post", "instagram_stories", "tiktok"}
@@ -285,7 +273,6 @@ def generate_images(
     if test_mode or os.getenv("TEST_MODE", "").lower() == "true":
         return _generate_placeholder_images(brand_key, product_name)
 
-    # Resolve product image URL
     meta = metadata or {}
     product_image_url = meta.get("image_url", "")
     if not product_image_url:
@@ -296,7 +283,7 @@ def generate_images(
         except Exception as e:
             logger.error("Could not fetch product image for '%s': %s", product_name, e)
 
-    if not product_image_url:
+    if not product_image_url and mode == "lifestyle":
         logger.error("No product image URL for '%s' — cannot generate images", product_name)
         return {}
 
@@ -308,23 +295,24 @@ def generate_images(
         product_image_url=product_image_url,
         output_path=lifestyle_path,
         scene_name=scene or None,
+        mode=mode,
+        reference_image_url=reference_image_url,
+        instruction=instruction,
     )
     if not success:
-        logger.error("Lifestyle image generation failed for '%s'", product_name)
+        logger.error("Image generation failed for '%s'", product_name)
         return {}
 
-    # Composite into feed/story sizes
     try:
         from src.compositor import compose_all
         from src.onboarding import load_brand
-        from datetime import date as _date
 
         brand = load_brand(brand_key)
         brand_name = brand.get("name", brand_key.upper())
         website_url = brand.get("storefront_url", "").replace("https://", "")
         price = meta.get("price", "")
+        out_dir = Path("outputs") / brand_key.lower() / date.today().isoformat()
 
-        out_dir = Path("outputs") / brand_key.lower() / _date.today().isoformat()
         composite = compose_all(
             lifestyle_path, brand_key, brand_name,
             visual_direction or "editorial",
@@ -339,33 +327,3 @@ def generate_images(
     except Exception as exc:
         logger.error("Composition failed for '%s': %s", product_name, exc)
         return {"lifestyle": _to_relative_url(lifestyle_path)}
-
-
-if __name__ == "__main__":
-    import subprocess
-    from src.shopify import get_product_primary_image_url
-
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-
-    product_url = get_product_primary_image_url("mbc", "Bernie Men's Slip On Sneaker")
-
-    if not product_url:
-        print("ERROR: could not fetch product image URL from Shopify")
-        raise SystemExit(1)
-
-    scenes_to_test = ["urban_loft", "city_street", "coffee_shop"]
-
-    for scene in scenes_to_test:
-        output_path = get_output_path("mbc", "Bernie Men's Slip On Sneaker", scene=scene)
-        success, used_scene = generate_lifestyle_image(
-            "mbc",
-            "Bernie Men's Slip On Sneaker",
-            "Why It Feels Different",
-            product_url,
-            output_path,
-            scene_name=scene,
-        )
-        print(f"Scene '{used_scene}': {'OK' if success else 'FAILED'} -> {output_path}")
-
-    print("\nDone. Open outputs/mbc/ to review all 3 scenes.")
-    subprocess.Popen(["explorer", "outputs\\mbc"])

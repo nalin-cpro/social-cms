@@ -11,5 +11,6 @@ class Brand(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     config_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     analysis_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    image_provider: Mapped[str] = mapped_column(String(50), default="fal_flux", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

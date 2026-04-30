@@ -11,15 +11,29 @@ export interface User {
 export interface Brand {
   key: string
   name: string
+  image_provider: string
   config_json: Record<string, unknown>
   analysis_json: Record<string, unknown> | null
   active: boolean
   created_at: string
 }
 
+export interface BrandMemoryRule {
+  id: number
+  brand_key: string
+  rule_text: string
+  rule_type: 'copy' | 'visual' | 'formatting'
+  source: 'manual' | 'client_feedback' | 'onboarding'
+  source_comment: string | null
+  status: 'pending_review' | 'confirmed' | 'rejected'
+  confirmed_by: number | null
+  created_at: string
+}
+
 export type ContentStatus =
   | 'pending'
   | 'generating'
+  | 'needs_image_source'
   | 'ready_for_internal_review'
   | 'internal_approved'
   | 'ready_for_approval'
@@ -31,17 +45,19 @@ export type ContentStatus =
 
 export interface CopyJson {
   caption?: string
-  hashtags?: string
+  hashtags?: string | string[]
   hook?: string
   frame_1?: { label: string; headline: string; body: string }
   frame_2?: { label: string; headline: string; body: string }
   subject_lines?: string[]
   preview_text?: string
   body_points?: string[]
+  body?: string
   cta?: string
   message?: string
   copy_valid?: boolean
   violations?: string[]
+  [key: string]: unknown
 }
 
 export interface ContentItem {
@@ -65,6 +81,8 @@ export interface ContentItem {
   visual_direction: string | null
   scene: string | null
   qc_score: number | null
+  image_source_type: string
+  asset_library_ref: string | null
   client_comment: string | null
   revision_count: number
   processed_at: string | null

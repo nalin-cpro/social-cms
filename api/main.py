@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.database import create_all_tables
 from api.routers import auth, brands, campaigns, content, pipeline, notifications
-from api.routers import suggestions, holidays
+from api.routers import suggestions, holidays, assets
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ app.include_router(pipeline.router)
 app.include_router(notifications.router)
 app.include_router(suggestions.router)
 app.include_router(holidays.router)
+app.include_router(assets.router)
 
 _outputs_dir = Path("outputs")
 _outputs_dir.mkdir(exist_ok=True)

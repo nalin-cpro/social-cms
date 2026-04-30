@@ -34,6 +34,10 @@ class ContentItem(Base):
     scene: Mapped[str | None] = mapped_column(String(50), nullable=True)
     qc_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Image source tracking (shopify | asset_library | manual_upload | not_set)
+    image_source_type: Mapped[str] = mapped_column(String(30), default="not_set", nullable=False)
+    asset_library_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     client_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     revision_count: Mapped[int] = mapped_column(Integer, default=0)
     ad_campaign_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

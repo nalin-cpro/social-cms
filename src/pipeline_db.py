@@ -128,11 +128,19 @@ async def process_item_db(
             qc = 4
         item.qc_score = float(qc)
 
-        item.status = "ready_for_internal_review"
+        # Decision 3: images/carousels skip internal review → directly to client
+        # Email/video → internal review first
+        _SKIP_INTERNAL = {"instagram_post", "instagram_stories", "tiktok", "facebook_post"}
+        if item.channel in _SKIP_INTERNAL or item.content_type not in ("email", "video"):
+            final_status = "ready_for_approval"
+        else:
+            final_status = "ready_for_internal_review"
+
+        item.status = final_status
         item.processed_at = datetime.utcnow()
         item.updated_at = datetime.utcnow()
         await session.commit()
-        logger.info("[%s] Done — status=ready_for_internal_review qc=%s", item.product_name, qc)
+        logger.info("[%s] Done — status=%s qc=%s", item.product_name, final_status, qc)
         return "ready"
 
     except Exception as exc:

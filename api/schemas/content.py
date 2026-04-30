@@ -14,6 +14,8 @@ class ContentItemRead(BaseModel):
     post_type: str
     scheduled_date: str | None
     status: str
+    image_source_type: str
+    asset_library_ref: str | None
     feed_post_url: str | None
     story_1_url: str | None
     story_2_url: str | None
@@ -66,3 +68,4 @@ class ContentItemCreate(BaseModel):
     visual_direction: str | None = None
     scene: str | None = None
     status: str = "pending"
+    image_source_type: str = "not_set"

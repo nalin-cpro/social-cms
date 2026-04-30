@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import Sidebar from '../../components/Sidebar'
 import { api } from '../../api/client'
-import { ContentItem, Brand } from '../../types'
+import { ContentItem, Brand, Campaign } from '../../types'
 import StatusBadge from '../../components/StatusBadge'
 import { LayoutGrid, Clock, CheckCircle, Users, Play, Loader2, X, FlaskConical } from 'lucide-react'
 
@@ -26,33 +26,22 @@ interface PipelineRun {
   completed_at: string | null
 }
 
-function generateMonthOptions(): string[] {
-  const now = new Date()
-  const opts: string[] = []
-  const MONTHS = ['January','February','March','April','May','June',
-    'July','August','September','October','November','December']
-  for (let i = 0; i < 5; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-    opts.push(`${MONTHS[d.getMonth()]} ${d.getFullYear()}`)
-  }
-  return opts
-}
 
 export default function AdminDashboard() {
   const [items, setItems] = useState<ContentItem[]>([])
   const [brands, setBrands] = useState<Brand[]>([])
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [showPipelineModal, setShowPipelineModal] = useState(false)
 
   // Modal form state
   const [brand, setBrand] = useState('mbc')
-  const [rangeMode, setRangeMode] = useState<'month' | 'date'>('month')
-  const [month, setMonth] = useState(generateMonthOptions()[0])
+  const [filterMode, setFilterMode] = useState<'campaign' | 'date'>('campaign')
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | ''>('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [mode, setMode] = useState<'all' | 'copy_only' | 'image_only'>('all')
   const [limit, setLimit] = useState(3)
   const [testMode, setTestMode] = useState(false)
-  const [dryRun, setDryRun] = useState(false)
 
   // Pipeline run tracking
   const [activeRun, setActiveRun] = useState<PipelineRun | null>(null)
@@ -63,6 +52,13 @@ export default function AdminDashboard() {
     api.get<ContentItem[]>('/content').then(setItems)
     api.get<Brand[]>('/brands').then(setBrands)
   }, [])
+
+  useEffect(() => {
+    api.get<Campaign[]>(`/campaigns?brand=${brand}`).then(cs => {
+      setCampaigns(cs)
+      setSelectedCampaignId(cs[0]?.id ?? '')
+    })
+  }, [brand])
 
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
@@ -100,15 +96,14 @@ export default function AdminDashboard() {
         mode,
         limit: Math.min(Math.max(1, limit), 25),
         test_mode: testMode,
-        dry_run: dryRun,
       }
-      if (rangeMode === 'month') {
-        payload.month_label = month
+      if (filterMode === 'campaign' && selectedCampaignId !== '') {
+        payload.campaign_id = selectedCampaignId
       } else {
         payload.start_date = startDate || undefined
         payload.end_date = endDate || undefined
       }
-      const run = await api.post<PipelineRun>('/pipeline/run', payload)
+      const run = await api.post<PipelineRun>('/pipeline/campaign/run', payload)
       setActiveRun(run)
       startPolling(run.id)
     } catch (e) {
@@ -241,28 +236,31 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {/* Mode toggle: By month / By date range */}
+              {/* Filter mode tabs */}
               <div>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: '#1a1f3a' }}>Filter by</label>
                 <div className="flex gap-1 p-1 rounded-lg w-fit" style={{ background: '#e8ebf5' }}>
-                  {(['month', 'date'] as const).map(m => (
-                    <button key={m} onClick={() => setRangeMode(m)}
+                  {(['campaign', 'date'] as const).map(m => (
+                    <button key={m} onClick={() => setFilterMode(m)}
                       className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all"
-                      style={rangeMode === m
+                      style={filterMode === m
                         ? { background: '#fff', color: '#1a2d82', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
                         : { color: '#4a5280', background: 'transparent' }}>
-                      {m === 'month' ? 'By month' : 'By date range'}
+                      {m === 'campaign' ? 'By campaign' : 'By date range'}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {rangeMode === 'month' ? (
+              {filterMode === 'campaign' ? (
                 <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#1a1f3a' }}>Month</label>
-                  <select value={month} onChange={e => setMonth(e.target.value)}
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#1a1f3a' }}>Campaign</label>
+                  <select value={selectedCampaignId} onChange={e => setSelectedCampaignId(Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #dde2f0', color: '#1a1f3a' }}>
-                    {generateMonthOptions().map(m => <option key={m} value={m}>{m}</option>)}
+                    {campaigns.length === 0
+                      ? <option value="">No campaigns for this brand</option>
+                      : campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                    }
                   </select>
                 </div>
               ) : (
@@ -305,20 +303,14 @@ export default function AdminDashboard() {
                   className="w-24 px-3 py-2 rounded-lg text-sm outline-none" style={{ border: '1px solid #dde2f0', color: '#1a1f3a' }} />
               </div>
 
-              {/* Checkboxes */}
-              <div className="space-y-2 pt-1">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={testMode} onChange={e => setTestMode(e.target.checked)} className="rounded" />
-                  <span className="flex items-center gap-1.5 text-sm" style={{ color: '#1a1f3a' }}>
-                    <FlaskConical size={13} style={{ color: '#7c3aed' }} />
-                    Test mode — use placeholder images, skip fal.ai credits
-                  </span>
-                </label>
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} className="rounded" />
-                  <span className="text-sm" style={{ color: '#1a1f3a' }}>Dry run — skip notification emails</span>
-                </label>
-              </div>
+              {/* Test mode */}
+              <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+                <input type="checkbox" checked={testMode} onChange={e => setTestMode(e.target.checked)} className="rounded" />
+                <span className="flex items-center gap-1.5 text-sm" style={{ color: '#1a1f3a' }}>
+                  <FlaskConical size={13} style={{ color: '#7c3aed' }} />
+                  Test mode — use placeholder images, skip fal.ai credits
+                </span>
+              </label>
 
               {/* Progress section */}
               {activeRun && (

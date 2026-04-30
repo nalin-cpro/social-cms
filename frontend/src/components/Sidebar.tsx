@@ -2,18 +2,19 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   LayoutDashboard, Users, CalendarDays, PlusCircle,
-  Inbox, MessageSquare, LogOut, History,
+  Inbox, MessageSquare, LogOut, History, Settings,
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 
 interface NavItem { label: string; to: string; icon: React.ElementType }
 
 const ADMIN_NAV: NavItem[] = [
-  { label: 'Dashboard',     to: '/admin/dashboard',  icon: LayoutDashboard },
-  { label: 'Campaign plan', to: '/admin/plan',        icon: CalendarDays },
-  { label: 'Suggestions',   to: '/admin/suggestions', icon: MessageSquare },
-  { label: 'Clients',       to: '/admin/clients',     icon: Users },
-  { label: 'Onboarding',    to: '/admin/onboarding',  icon: PlusCircle },
+  { label: 'Dashboard',      to: '/admin/dashboard',      icon: LayoutDashboard },
+  { label: 'Campaign plan',  to: '/admin/plan',           icon: CalendarDays },
+  { label: 'Suggestions',    to: '/admin/suggestions',    icon: MessageSquare },
+  { label: 'Clients',        to: '/admin/clients',        icon: Users },
+  { label: 'Onboarding',     to: '/admin/onboarding',     icon: PlusCircle },
+  { label: 'Brand settings', to: '/admin/brand-settings', icon: Settings },
 ]
 
 const DESIGNER_NAV: NavItem[] = [

@@ -10,6 +10,7 @@ import AdminCalendar from './pages/admin/Calendar'
 import AdminContentQueue from './pages/admin/ContentQueue'
 import AdminOnboarding from './pages/admin/Onboarding'
 import AdminPlan from './pages/admin/Plan'
+import AdminBrandSettings from './pages/admin/BrandSettings'
 import DesignerQueue from './pages/designer/Queue'
 import DesignerRevisions from './pages/designer/Revisions'
 import DesignerContentDetail from './pages/designer/ContentDetail'
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/admin/queue" element={<RoleGate allowed={['admin']}><AdminContentQueue /></RoleGate>} />
         <Route path="/admin/onboarding" element={<RoleGate allowed={['admin']}><AdminOnboarding /></RoleGate>} />
         <Route path="/admin/suggestions" element={<RoleGate allowed={['admin']}><AdminPlan /></RoleGate>} />
+        <Route path="/admin/brand-settings" element={<RoleGate allowed={['admin']}><AdminBrandSettings /></RoleGate>} />
 
         <Route path="/designer/plan" element={<RoleGate allowed={['admin', 'designer']}><AdminPlan /></RoleGate>} />
         <Route path="/designer/queue" element={<RoleGate allowed={['admin', 'designer']}><DesignerQueue /></RoleGate>} />

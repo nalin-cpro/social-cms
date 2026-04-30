@@ -274,12 +274,13 @@ async def add_comment(
     )
     db.add(comment)
 
-    # If client leaves feedback, mark item and trigger AI revision
+    # If client leaves feedback, mark item and trigger AI revision + brand rule extraction
     if current_user.role == "client":
         item.status = "changes_requested"
         item.client_comment = body.message
         item.updated_at = datetime.utcnow()
         background_tasks.add_task(_run_revision, item.id, body.message)
+        background_tasks.add_task(_extract_and_save_brand_rule, item.id, item.brand_key, body.message)
 
     await db.commit()
     await db.refresh(comment)
@@ -405,5 +406,70 @@ def _run_image_regen(item_id: int, instruction: str) -> None:
                 item.status = "error"
                 item.updated_at = datetime.utcnow()
                 await session.commit()
+
+    asyncio.run(_do())
+
+
+def _extract_and_save_brand_rule(item_id: int, brand_key: str, comment: str) -> None:
+    """Background task: check if client comment contains a learnable brand rule."""
+    import asyncio, sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+    async def _do():
+        try:
+            from anthropic import Anthropic
+            import json as _json
+
+            client = Anthropic()
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=200,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"A client left this feedback on a content post for brand {brand_key}:\n"
+                        f"'{comment}'\n\n"
+                        "Does this feedback contain a learnable brand rule that should be applied to "
+                        "all future content? Examples of learnable rules:\n"
+                        "- 'don't use work boots' -> rule: never use term 'work boots'\n"
+                        "- 'use sentence case not title case' -> rule: always sentence case\n"
+                        "Not all feedback is a rule. 'I like this' is not a rule.\n"
+                        "If this IS a learnable rule, return JSON:\n"
+                        "{\"is_rule\": true, \"rule_text\": \"...\", \"rule_type\": \"copy|visual|formatting\"}\n"
+                        "If not, return: {\"is_rule\": false}"
+                    ),
+                }],
+            )
+            data = _json.loads(resp.content[0].text.strip())
+            if not data.get("is_rule"):
+                return
+
+            from api.database import AsyncSessionLocal
+            from api.models.brand_memory import BrandMemoryRule
+            from api.models.notification import Notification as N
+
+            async with AsyncSessionLocal() as session:
+                rule = BrandMemoryRule(
+                    brand_key=brand_key,
+                    rule_text=data["rule_text"],
+                    rule_type=data.get("rule_type", "copy"),
+                    source="client_feedback",
+                    source_comment=comment,
+                    source_content_item_id=item_id,
+                    status="pending_review",
+                )
+                session.add(rule)
+                session.add(N(
+                    recipient_role="admin",
+                    brand_key=brand_key,
+                    content_item_id=item_id,
+                    type="brand_rule_extracted",
+                    message=f"New brand rule from client feedback: \"{data['rule_text']}\" — review in Brand Memory.",
+                ))
+                await session.commit()
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("extract_brand_rule failed: %s", exc)
 
     asyncio.run(_do())

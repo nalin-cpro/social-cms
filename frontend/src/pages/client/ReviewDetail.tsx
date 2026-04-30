@@ -1,290 +1,348 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Sidebar from '../../components/Sidebar'
+import { Check, Send, ImageOff, Loader2, ChevronLeft } from 'lucide-react'
+import { ContentItem, ContentComment } from '../../types'
 import { api } from '../../api/client'
-import { ContentItem, ContentComment, CopyJson } from '../../types'
-import StatusBadge from '../../components/StatusBadge'
-import { useToast } from '../../contexts/ToastContext'
-import { ArrowLeft, Send, ImageOff, CheckCircle, MessageSquare } from 'lucide-react'
 
-type Tab = 'feed' | 'stories' | 'email'
+const NAVY = '#1a2d82'
+const GOLD = '#f5b800'
+const BASE_URL = import.meta.env.VITE_API_BASE || ''
 
-function SafeImage({ src, alt, className, style }: { src: string; alt: string; className?: string; style?: React.CSSProperties }) {
-  const [err, setErr] = useState(false)
-  if (err) return (
-    <div className={`flex items-center justify-center rounded-xl ${className ?? ''}`} style={{ background: '#f4f6fb', ...style }}>
-      <ImageOff size={24} style={{ color: '#8892b8' }} />
-    </div>
-  )
-  return <img src={src} alt={alt} onError={() => setErr(true)} className={`object-cover rounded-xl ${className ?? ''}`} style={style} />
-}
+// ── Safe image ────────────────────────────────────────────────────────────────
 
-function CopyBlock({ copy, channel }: { copy: CopyJson; channel: string }) {
-  const ch = channel.toLowerCase()
-  if (ch.includes('email')) {
+function SafeImage({ src, alt, className, style }: {
+  src: string | null | undefined
+  alt: string
+  className?: string
+  style?: React.CSSProperties
+}) {
+  const [broken, setBroken] = useState(false)
+  const resolved = src?.startsWith('/') ? `${BASE_URL}${src}` : src
+
+  if (!src || broken) {
     return (
-      <div className="space-y-3 text-sm" style={{ color: '#1a1f3a' }}>
-        {copy.subject_lines && <div><p className="text-xs font-semibold mb-1" style={{ color: '#8892b8' }}>Subject lines</p>{copy.subject_lines.map((s, i) => <p key={i} className="py-1">{s}</p>)}</div>}
-        {copy.preview_text && <div><p className="text-xs font-semibold mb-1" style={{ color: '#8892b8' }}>Preview</p><p>{copy.preview_text}</p></div>}
-        {copy.body_points && <div><p className="text-xs font-semibold mb-1" style={{ color: '#8892b8' }}>Body</p><ul className="list-disc list-inside space-y-1">{copy.body_points.map((b, i) => <li key={i}>{b}</li>)}</ul></div>}
-        {copy.cta && <div><p className="text-xs font-semibold mb-1" style={{ color: '#8892b8' }}>CTA</p><p>{copy.cta}</p></div>}
+      <div
+        className={`flex flex-col items-center justify-center gap-2 ${className || ''}`}
+        style={{ background: '#f4f6fb', border: '1px dashed #dde2f0', minHeight: 200, borderRadius: 12, ...style }}
+      >
+        <ImageOff size={28} style={{ color: '#dde2f0' }} />
+        <p className="text-xs text-center px-4" style={{ color: '#8892b8' }}>
+          Image coming soon — check back shortly
+        </p>
       </div>
     )
   }
   return (
-    <div className="space-y-3 text-sm" style={{ color: '#1a1f3a' }}>
-      {copy.hook && <div><p className="text-xs font-semibold mb-1" style={{ color: '#8892b8' }}>Hook</p><p>{copy.hook}</p></div>}
-      {copy.caption && <div><p className="text-xs font-semibold mb-1" style={{ color: '#8892b8' }}>Caption</p><p style={{ whiteSpace: 'pre-wrap' }}>{copy.caption}</p></div>}
-      {copy.hashtags && <div><p className="text-xs font-semibold mb-1" style={{ color: '#8892b8' }}>Hashtags</p><p style={{ color: '#1d4ed8' }}>{copy.hashtags}</p></div>}
+    <img src={resolved || ''} alt={alt} className={className} style={style} onError={() => setBroken(true)} />
+  )
+}
+
+// ── Copy blocks ───────────────────────────────────────────────────────────────
+
+function CaptionBlock({ copy }: { copy: Record<string, unknown> }) {
+  const caption = copy.caption as string | undefined
+  const hashtags = (copy.hashtags as string[] | undefined)?.join(' ')
+  const hook = copy.hook as string | undefined
+  return (
+    <div className="space-y-2">
+      {hook && <p className="text-sm font-semibold" style={{ color: '#1a1f3a' }}>{hook}</p>}
+      {caption && <p className="text-sm leading-relaxed" style={{ color: '#1a1f3a' }}>{caption}</p>}
+      {hashtags && <p className="text-xs" style={{ color: '#8892b8' }}>{hashtags}</p>}
     </div>
   )
 }
 
-export default function ClientReviewDetail() {
+function EmailBlock({ copy }: { copy: Record<string, unknown> }) {
+  const subjects = copy.subject_lines as string[] | undefined
+  const preview = copy.preview_text as string | undefined
+  const body = copy.body as string | undefined
+  const cta = copy.cta as string | undefined
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg p-3" style={{ background: '#fff8e0', border: '1px solid #fde68a' }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#92400e' }}>Email campaign</p>
+        <p className="text-xs" style={{ color: '#92400e' }}>
+          This email template will be sent via Klaviyo using your brand template.
+        </p>
+      </div>
+      {subjects && subjects.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#8892b8' }}>Subject lines</p>
+          {subjects.map((s, i) => (
+            <p key={i} className={`text-sm mb-1 ${i === 0 ? 'font-semibold' : ''}`} style={{ color: '#1a1f3a' }}>
+              {i === 0 ? '★ ' : '○ '}{s}
+            </p>
+          ))}
+        </div>
+      )}
+      {preview && <p className="text-sm italic" style={{ color: '#8892b8' }}>{preview}</p>}
+      {body && (
+        <div className="text-sm leading-relaxed pl-4" style={{ borderLeft: `3px solid #dde2f0`, color: '#1a1f3a' }}>
+          {body}
+        </div>
+      )}
+      {cta && (
+        <span className="inline-block text-sm font-semibold px-4 py-2 rounded-lg"
+          style={{ background: GOLD, color: '#1a1f3a' }}>
+          {cta}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── Thread ────────────────────────────────────────────────────────────────────
+
+function Thread({ comments }: { comments: ContentComment[] }) {
+  return (
+    <div className="space-y-3">
+      {comments.map(comment => {
+        const isTeam = comment.sender_role !== 'client'
+        const time = new Date(comment.created_at).toLocaleString([], {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        })
+        return (
+          <div key={comment.id} className={`flex gap-2 ${isTeam ? 'flex-row-reverse' : 'flex-row'}`}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+              style={isTeam
+                ? { background: NAVY, color: '#fff' }
+                : { background: '#f4f6fb', color: NAVY, border: '1px solid #dde2f0' }}>
+              {isTeam ? 'P' : 'Me'}
+            </div>
+            <div className={`max-w-[80%] flex flex-col gap-0.5 ${isTeam ? 'items-end' : 'items-start'}`}>
+              <div className="px-4 py-2.5 rounded-2xl text-sm leading-relaxed"
+                style={isTeam
+                  ? { background: NAVY, color: '#fff', borderBottomRightRadius: 4 }
+                  : { background: '#f4f6fb', color: '#1a1f3a', border: '1px solid #dde2f0', borderBottomLeftRadius: 4 }}>
+                {comment.message}
+              </div>
+              <p className="text-xs" style={{ color: '#8892b8' }}>
+                {isTeam ? 'Progility' : 'You'} · {time}
+              </p>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function ReviewDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { toast } = useToast()
+
   const [item, setItem] = useState<ContentItem | null>(null)
   const [comments, setComments] = useState<ContentComment[]>([])
-  const [tab, setTab] = useState<Tab>('feed')
-  const [feedback, setFeedback] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'feed' | 'stories' | 'email'>('feed')
+  const [feedbackText, setFeedbackText] = useState('')
+  const [sending, setSending] = useState(false)
   const [approving, setApproving] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const [approved, setApproved] = useState(false)
+  const [feedbackSent, setFeedbackSent] = useState(false)
+  const commentsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!id) return
-    api.get<ContentItem>(`/content/${id}`).then(setItem)
-    api.get<ContentComment[]>(`/content/${id}/comments`).then(setComments)
+    Promise.all([
+      api.get<ContentItem>(`/content/${id}`),
+      api.get<ContentComment[]>(`/content/${id}/comments`),
+    ]).then(([fetchedItem, cmts]) => {
+      setItem(fetchedItem)
+      setComments(cmts.filter(c => !c.is_internal && !c.is_ai_revision))
+      setApproved(fetchedItem.status === 'approved')
+      if (fetchedItem.channel === 'email') setTab('email')
+    }).catch(() => navigate('/client/review'))
+      .finally(() => setLoading(false))
   }, [id])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [comments.length])
+    commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [comments])
 
-  if (!item) return (
-    <div className="flex min-h-screen" style={{ background: '#f4f6fb' }}>
-      <Sidebar />
-      <main className="flex-1 p-8 flex items-center justify-center">
-        <p className="text-sm" style={{ color: '#8892b8' }}>Loading…</p>
-      </main>
-    </div>
-  )
-
-  const ch = item.channel.toLowerCase()
-  const hasEmail = ch.includes('email')
-  const hasStories = !!(item.story_1_url || item.story_2_url)
-  const hasFeed = !!(item.feed_post_url || item.lifestyle_url)
-
-  const tabs: { key: Tab; label: string; show: boolean }[] = [
-    { key: 'feed', label: 'Feed', show: hasFeed || !hasEmail },
-    { key: 'stories', label: 'Stories', show: hasStories },
-    { key: 'email', label: 'Email', show: hasEmail },
-  ]
-
-  const approve = async () => {
+  const handleApprove = async () => {
+    if (!item) return
     setApproving(true)
     try {
-      const updated = await api.post<ContentItem>(`/content/${item.id}/approve`, {})
-      setItem(updated)
-      toast('Approved!')
-    } catch { toast('Failed to approve') }
+      await api.post(`/content/${item.id}/approve`)
+      setApproved(true)
+      setItem(prev => prev ? { ...prev, status: 'approved' } : prev)
+    } catch (e) { console.error(e) }
     finally { setApproving(false) }
   }
 
-  const sendFeedback = async () => {
-    if (!feedback.trim()) return
-    setSubmitting(true)
+  const handleFeedback = async () => {
+    if (!item || !feedbackText.trim()) return
+    setSending(true)
     try {
-      const comment = await api.post<ContentComment>(`/content/${item.id}/comments`, { message: feedback, is_internal: false })
+      const comment = await api.post<ContentComment>(`/content/${item.id}/comments`, {
+        message: feedbackText, is_internal: false,
+      })
       setComments(prev => [...prev, comment])
-      const updated = await api.get<ContentItem>(`/content/${item.id}`)
-      setItem(updated)
-      setFeedback('')
-      toast('Feedback sent')
-    } catch { toast('Failed to send feedback') }
-    finally { setSubmitting(false) }
+      setFeedbackText('')
+      setFeedbackSent(true)
+      setTimeout(() => setFeedbackSent(false), 5000)
+    } catch (e) { console.error(e) }
+    finally { setSending(false) }
   }
 
-  const canApprove = item.status === 'ready_for_approval'
-  const canComment = item.status === 'ready_for_approval' || item.status === 'changes_requested'
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 size={24} className="animate-spin" style={{ color: NAVY }} />
+      </div>
+    )
+  }
+
+  if (!item) return null
+
+  const isEmail = item.channel === 'email'
+  const hasStories = !!(item.story_1_url || item.story_2_url)
+  const allTabs = [
+    { id: 'feed' as const,    label: 'Feed post', show: !isEmail },
+    { id: 'stories' as const, label: 'Stories',   show: !isEmail && hasStories },
+    { id: 'email' as const,   label: 'Email',     show: isEmail },
+  ].filter(t => t.show)
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#f4f6fb' }}>
-      <Sidebar />
-      <main className="flex-1 overflow-auto">
+    <div className="min-h-screen" style={{ background: '#f4f6fb' }}>
+      <div className="max-w-[540px] mx-auto px-4 py-6 pb-24">
+
+        {/* Back */}
+        <button onClick={() => navigate('/client/review')}
+          className="flex items-center gap-1 text-xs mb-5 font-medium"
+          style={{ color: '#8892b8' }}>
+          <ChevronLeft size={14} /> All posts
+        </button>
+
         {/* Header */}
-        <div className="px-8 pt-8 pb-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-2 text-xs mb-5 transition-colors"
-            style={{ color: '#8892b8' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#1a1f3a')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#8892b8')}
-          >
-            <ArrowLeft size={13} />
-            Back to review list
-          </button>
-          <div className="flex items-start justify-between">
+        <div className="mb-5">
+          <h1 className="text-base font-bold mb-1" style={{ color: '#1a1f3a' }}>{item.product_name}</h1>
+          <p className="text-xs" style={{ color: '#8892b8' }}>
+            {item.channel.replace(/_/g, ' ')} · {item.scheduled_date || 'No date'} · {item.campaign}
+          </p>
+          <div className="mt-2">
+            <span className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full"
+              style={approved
+                ? { background: '#e8f8ef', color: '#0f7b3f' }
+                : { background: '#f5f3ff', color: '#5b21b6' }}>
+              {approved ? 'Approved' : 'Awaiting your review'}
+            </span>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        {allTabs.length > 1 && (
+          <div className="flex gap-1 mb-4 overflow-x-auto">
+            {allTabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg"
+                style={tab === t.id
+                  ? { background: NAVY, color: '#fff' }
+                  : { background: '#fff', color: '#4a5280', border: '1px solid #dde2f0' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Content card */}
+        <div className="rounded-xl overflow-hidden mb-5" style={{ background: '#fff', border: '1px solid #dde2f0' }}>
+          {tab === 'feed' && !isEmail && (
             <div>
-              <h1 className="text-xl font-semibold" style={{ color: '#1a1f3a' }}>{item.product_name}</h1>
-              <p className="text-sm mt-0.5" style={{ color: '#4a5280' }}>
-                {item.campaign} · {item.channel} · {item.scheduled_date ?? 'No date'}
-              </p>
-            </div>
-            <StatusBadge status={item.status} />
-          </div>
-        </div>
-
-        <div className="px-8 pb-8 grid grid-cols-[1fr_340px] gap-6">
-          {/* Left: images + copy */}
-          <div className="space-y-4">
-            {/* Channel tabs */}
-            {tabs.filter(t => t.show).length > 1 && (
-              <div className="flex gap-1 p-1 rounded-lg w-fit" style={{ background: '#e8ebf5' }}>
-                {tabs.filter(t => t.show).map(t => (
-                  <button
-                    key={t.key}
-                    onClick={() => setTab(t.key)}
-                    className="px-4 py-1.5 rounded-md text-xs font-semibold transition-all"
-                    style={tab === t.key
-                      ? { background: '#fff', color: '#1a2d82', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
-                      : { color: '#4a5280', background: 'transparent' }
-                    }
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="rounded-xl p-6 space-y-5" style={{ background: '#fff', border: '1px solid #dde2f0' }}>
-              {/* Feed tab */}
-              {tab === 'feed' && (
-                <div className="space-y-4">
-                  {item.feed_post_url
-                    ? <SafeImage src={item.feed_post_url} alt="Feed" className="w-full" style={{ maxHeight: 480 }} />
-                    : <div className="rounded-xl flex items-center justify-center" style={{ height: 320, background: '#f4f6fb' }}><ImageOff size={32} style={{ color: '#8892b8' }} /></div>
-                  }
-                  {item.lifestyle_url && <SafeImage src={item.lifestyle_url} alt="Lifestyle" className="w-full" style={{ maxHeight: 320 }} />}
-                </div>
-              )}
-
-              {/* Stories tab */}
-              {tab === 'stories' && (
-                <div className="grid grid-cols-2 gap-4">
-                  {item.story_1_url && <SafeImage src={item.story_1_url} alt="Story 1" className="w-full" style={{ aspectRatio: '9/16' }} />}
-                  {item.story_2_url && <SafeImage src={item.story_2_url} alt="Story 2" className="w-full" style={{ aspectRatio: '9/16' }} />}
-                </div>
-              )}
-
-              {/* Email tab */}
-              {tab === 'email' && (
-                <div className="max-w-lg mx-auto space-y-4">
-                  {item.feed_post_url && <SafeImage src={item.feed_post_url} alt="Email banner" className="w-full rounded-xl" />}
-                </div>
-              )}
-
-              {item.copy_json && (
-                <div style={{ borderTop: '1px solid #dde2f0', paddingTop: 16 }}>
-                  <p className="text-xs font-semibold mb-3" style={{ color: '#8892b8' }}>COPY</p>
-                  <CopyBlock copy={item.copy_json} channel={item.channel} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: actions + comments */}
-          <div className="space-y-4">
-            {/* Approve card */}
-            {canApprove && (
-              <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #dde2f0' }}>
-                <p className="text-sm font-semibold mb-1" style={{ color: '#1a1f3a' }}>Ready for approval</p>
-                <p className="text-xs mb-4" style={{ color: '#4a5280' }}>Once approved, this content will be published on the scheduled date.</p>
-                <button
-                  onClick={approve}
-                  disabled={approving}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-opacity disabled:opacity-50"
-                  style={{ background: '#f5b800', color: '#1a1f3a' }}
-                >
-                  <CheckCircle size={15} />
-                  {approving ? 'Approving…' : 'Approve content'}
-                </button>
-              </div>
-            )}
-
-            {item.status === 'approved' && (
-              <div className="rounded-xl px-5 py-4 flex items-center gap-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                <CheckCircle size={16} style={{ color: '#15803d' }} />
-                <p className="text-sm font-medium" style={{ color: '#15803d' }}>Approved — ready to publish</p>
-              </div>
-            )}
-
-            {item.status === 'changes_requested' && (
-              <div className="rounded-xl px-5 py-4" style={{ background: '#fff8e0', border: '1px solid #f3cf78' }}>
-                <p className="text-sm font-medium" style={{ color: '#92400e' }}>Feedback received</p>
-                <p className="text-xs mt-1" style={{ color: '#92400e' }}>Our team is working on your revision.</p>
-              </div>
-            )}
-
-            {/* Comments */}
-            <div className="rounded-xl flex flex-col" style={{ background: '#fff', border: '1px solid #dde2f0', minHeight: 300 }}>
-              <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid #dde2f0' }}>
-                <MessageSquare size={14} style={{ color: '#1a2d82' }} />
-                <p className="text-xs font-semibold" style={{ color: '#1a1f3a' }}>Comments</p>
-              </div>
-
-              <div className="flex-1 px-4 py-3 space-y-3 overflow-y-auto" style={{ maxHeight: 320 }}>
-                {comments.length === 0 && (
-                  <p className="text-xs text-center py-4" style={{ color: '#8892b8' }}>No comments yet</p>
+              <SafeImage src={item.feed_post_url} alt={item.product_name}
+                className="w-full object-cover" style={{ aspectRatio: '1', display: 'block' }} />
+              <div className="p-4 space-y-3">
+                {item.qc_score != null && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                    style={{ background: '#e8eeff', color: NAVY }}>
+                    Quality: {Math.round(item.qc_score * 10)}
+                  </span>
                 )}
-                {comments.map(c => {
-                  const isClient = c.sender_role === 'client'
-                  return (
-                    <div key={c.id} className={`flex ${isClient ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className="rounded-xl px-3 py-2 max-w-[85%]"
-                        style={isClient
-                          ? { background: '#1a2d82', color: '#fff' }
-                          : { background: '#f4f6fb', color: '#1a1f3a' }
-                        }
-                      >
-                        <p className="text-xs font-semibold mb-0.5" style={{ opacity: 0.7 }}>
-                          {isClient ? 'You' : 'Progility Team'}
-                        </p>
-                        <p className="text-xs" style={{ lineHeight: 1.5 }}>{c.message}</p>
-                      </div>
-                    </div>
-                  )
-                })}
-                <div ref={bottomRef} />
+                {item.copy_json && <CaptionBlock copy={item.copy_json} />}
               </div>
-
-              {canComment && (
-                <div className="px-4 pb-4 pt-2 flex gap-2" style={{ borderTop: '1px solid #dde2f0' }}>
-                  <textarea
-                    value={feedback}
-                    onChange={e => setFeedback(e.target.value)}
-                    placeholder="Leave feedback…"
-                    rows={2}
-                    className="flex-1 resize-none rounded-lg px-3 py-2 text-xs outline-none"
-                    style={{ border: '1px solid #dde2f0', color: '#1a1f3a', lineHeight: 1.5 }}
-                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendFeedback() }}
-                  />
-                  <button
-                    onClick={sendFeedback}
-                    disabled={submitting || !feedback.trim()}
-                    className="flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0 self-end disabled:opacity-40 transition-opacity"
-                    style={{ background: '#1a2d82' }}
-                  >
-                    <Send size={13} style={{ color: '#fff' }} />
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
+          )}
+
+          {tab === 'stories' && !isEmail && (
+            <div className="p-4">
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <SafeImage src={item.story_1_url} alt="Story 1"
+                  className="w-full rounded-lg object-cover" style={{ aspectRatio: '9/16' }} />
+                <SafeImage src={item.story_2_url} alt="Story 2"
+                  className="w-full rounded-lg object-cover" style={{ aspectRatio: '9/16' }} />
+              </div>
+            </div>
+          )}
+
+          {tab === 'email' && isEmail && (
+            <div className="p-4">
+              {item.copy_json
+                ? <EmailBlock copy={item.copy_json} />
+                : <p className="text-xs text-center py-6" style={{ color: '#8892b8' }}>Copy not yet generated.</p>}
+            </div>
+          )}
         </div>
-      </main>
+
+        {/* Thread */}
+        {comments.length > 0 && (
+          <div className="rounded-xl p-4 mb-5" style={{ background: '#fff', border: '1px solid #dde2f0' }}>
+            <p className="text-xs font-semibold mb-4 uppercase tracking-wide" style={{ color: '#8892b8' }}>Notes</p>
+            <Thread comments={comments} />
+            <div ref={commentsEndRef} />
+          </div>
+        )}
+
+        {/* Feedback sent */}
+        {feedbackSent && (
+          <div className="rounded-xl px-4 py-3 mb-4 text-sm text-center"
+            style={{ background: '#e8f8ef', color: '#0f7b3f', border: '1px solid #6ee7b7' }}>
+            Thank you — we'll review your note and be in touch shortly.
+          </div>
+        )}
+
+        {/* Approved confirmation */}
+        {approved && (
+          <div className="rounded-xl px-4 py-4 mb-4 text-center"
+            style={{ background: '#e8f8ef', border: '1px solid #6ee7b7' }}>
+            <svg className="mx-auto mb-2" width="32" height="32" viewBox="0 0 24 24" fill="none"
+              stroke="#0f7b3f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/>
+            </svg>
+            <p className="text-sm font-semibold" style={{ color: '#0f7b3f' }}>Approved — thank you!</p>
+          </div>
+        )}
+
+        {/* Feedback + approve */}
+        {!approved && item.status === 'ready_for_approval' && (
+          <div className="space-y-3">
+            <textarea rows={3} value={feedbackText}
+              onChange={e => setFeedbackText(e.target.value)}
+              placeholder="Leave a note for the team…"
+              className="w-full px-4 py-3 text-sm rounded-xl outline-none resize-none"
+              style={{ border: '1px solid #dde2f0', color: '#1a1f3a', background: '#fff' }}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleFeedback() }} />
+
+            <button onClick={handleApprove} disabled={approving}
+              className="flex items-center justify-center gap-2 w-full text-sm font-bold rounded-xl disabled:opacity-50"
+              style={{ background: GOLD, color: '#1a1f3a', height: 48 }}>
+              {approving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              Approve
+            </button>
+
+            {feedbackText.trim() && (
+              <button onClick={handleFeedback} disabled={sending}
+                className="flex items-center justify-center gap-2 w-full text-sm font-semibold rounded-xl disabled:opacity-50"
+                style={{ border: '1px solid #dde2f0', color: '#4a5280', height: 44, background: '#fff' }}>
+                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Send feedback
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

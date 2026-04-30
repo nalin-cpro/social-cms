@@ -7,6 +7,7 @@ class BrandRead(BaseModel):
     name: str
     config_json: dict
     analysis_json: dict | None
+    image_provider: str
     active: bool
     created_at: datetime
 
@@ -16,4 +17,5 @@ class BrandRead(BaseModel):
 class BrandUpdate(BaseModel):
     name: str | None = None
     config_json: dict | None = None
+    image_provider: str | None = None
     active: bool | None = None
