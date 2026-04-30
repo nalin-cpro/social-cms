@@ -392,11 +392,11 @@ async def pipeline_run_detail(
 
 @router.post("/test-single")
 async def test_single_post_sync(
-    item_id: int,
-    mode: str = "copy_only",
-    test_mode: bool = True,
     _: Annotated[User, Depends(require_roles("admin"))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    item_id: int = 0,
+    mode: str = "copy_only",
+    test_mode: bool = True,
 ):
     """Synchronous debug endpoint: run pipeline for one post, return result immediately."""
     from src.pipeline_db import process_item_db
