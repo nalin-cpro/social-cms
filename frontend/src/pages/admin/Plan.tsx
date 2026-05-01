@@ -144,14 +144,15 @@ function PostRow({ item, onClick }: { item: ContentItem; onClick: () => void }) 
 
 // ── Campaign card ─────────────────────────────────────────────────────────────
 function CampaignCard({
-  campaign, isAdmin, onUpdate, onSendToClient,
+  campaign, isAdmin, onUpdate, onSendToClient, autoExpand,
 }: {
   campaign: Campaign
   isAdmin: boolean
   onUpdate: (c: Campaign) => void
   onSendToClient: (c: Campaign) => void
+  autoExpand?: boolean
 }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(autoExpand ?? true)
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null)
   const { user } = useAuth()
   const posts = campaign.posts ?? []
@@ -427,7 +428,8 @@ function NewCampaignModal({
       })
       onCreate(res)
       onClose()
-      toast('Campaign created by AI')
+      const postCount = res.posts?.length ?? 0
+      toast(`Campaign created with ${postCount} post${postCount !== 1 ? 's' : ''} — ready to generate content`)
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Failed to generate', 'error')
     } finally {
@@ -700,6 +702,7 @@ export default function PlanPage() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showAI, setShowAI] = useState(false)
   const [sendingClient, setSendingClient] = useState<number | null>(null)
+  const [newCampaignId, setNewCampaignId] = useState<number | null>(null)
 
   const weeks = useMemo(() => getWeeksForMonth(year, month), [year, month])
   const selectedWeek = weeks[weekIdx] ?? weeks[0]
@@ -896,6 +899,7 @@ export default function PlanPage() {
                   isAdmin={isAdmin}
                   onUpdate={handleCampaignUpdate}
                   onSendToClient={handleSendToClient}
+                  autoExpand={c.id === newCampaignId}
                 />
               ))}
 
@@ -930,7 +934,7 @@ export default function PlanPage() {
           brandKey={selectedBrandKey}
           brands={brands}
           onClose={() => setShowNewModal(false)}
-          onCreate={c => { setCampaigns(prev => [c, ...prev]); setShowNewModal(false) }}
+          onCreate={c => { setCampaigns(prev => [c, ...prev]); setNewCampaignId(c.id); setShowNewModal(false) }}
         />
       )}
       {showImportModal && selectedBrandKey && (

@@ -10,11 +10,13 @@ from typing import Annotated
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_roles
 from api.database import get_db
 from api.models.campaign import Campaign
+from api.models.content import ContentItem
 from api.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -85,50 +87,71 @@ async def generate_campaign(
     _: Annotated[User, Depends(require_roles("admin"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    channels_str = ", ".join(body.channels) if body.channels else "Instagram post, Instagram stories"
-    date_ctx = f"Target date range: {body.start_date} to {body.end_date}" if body.start_date else ""
+    channels_str = ", ".join(body.channels) if body.channels else "instagram_post, instagram_stories"
+    date_ctx = f"Target date range: {body.start_date} to {body.end_date}." if body.start_date else ""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
 
     prompt = (
-        f"Create a marketing campaign brief for brand: {body.brand_key}.\n\n"
+        f"You are a marketing campaign planner for a social media agency.\n\n"
+        f"Brand: {body.brand_key}\n"
         f"Campaign description: {body.description}\n"
         f"Channels to use: {channels_str}\n"
+        f"Today's date: {today}\n"
         f"{date_ctx}\n\n"
-        f"Return ONLY a valid JSON object with these exact fields:\n"
-        '{{\n'
-        '  "name": "Campaign name (short, punchy, 3-6 words)",\n'
+        f"Return ONLY a valid JSON object (no markdown fences, no explanation) with this exact structure:\n"
+        "{\n"
+        '  "name": "Campaign name (short, 3-6 words)",\n'
         '  "theme": "Creative direction and core message (2-3 sentences)",\n'
-        '  "visual_direction": "Visual style, mood, scenes, colors, styling (2-3 sentences)",\n'
+        '  "visual_direction": "Visual style, mood, scenes, colors (2-3 sentences)",\n'
         '  "notes": "Strategy notes and key messaging points",\n'
         '  "month_label": "Month Year e.g. May 2026",\n'
         '  "start_date": "YYYY-MM-DD or null",\n'
-        '  "end_date": "YYYY-MM-DD or null"\n'
-        '}}'
+        '  "end_date": "YYYY-MM-DD or null",\n'
+        '  "posts": [\n'
+        "    {\n"
+        '      "product_name": "Product or content piece name",\n'
+        '      "channel": "one of: instagram_post | instagram_stories | facebook_post | email | tiktok",\n'
+        '      "post_type": "one of: static | reel | stories | email | carousel",\n'
+        '      "scheduled_date": "YYYY-MM-DD",\n'
+        '      "visual_direction": "Specific visual direction for this post"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        f"Generate 3 to 6 posts spread across the requested channels and date range. "
+        f"Use real product or content ideas based on the description. "
+        f"All scheduled_date values must be real calendar dates in YYYY-MM-DD format."
     )
 
     try:
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=700,
+            max_tokens=1200,
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.content[0].text.strip()
+        # Strip markdown code fences if Claude wrapped the JSON
         if "```" in text:
             parts = text.split("```")
-            text = parts[1] if len(parts) > 1 else text
-            if text.startswith("json"):
-                text = text[4:]
+            for part in parts:
+                cleaned = part.strip()
+                if cleaned.startswith("json"):
+                    cleaned = cleaned[4:].strip()
+                if cleaned.startswith("{"):
+                    text = cleaned
+                    break
         data = json.loads(text.strip())
     except json.JSONDecodeError as exc:
-        logger.error("generate-campaign JSON parse error: %s", exc)
-        raise HTTPException(status_code=500, detail="AI returned invalid response. Please try again.")
+        logger.error("generate-campaign JSON parse error: %s | raw text: %s", exc, text[:500] if 'text' in dir() else 'N/A')
+        raise HTTPException(status_code=500, detail="AI returned invalid JSON. Please try again.")
     except Exception as exc:
         logger.error("generate-campaign error: %s", exc)
         raise HTTPException(status_code=500, detail="AI generation failed. Please try again.")
 
+    # Persist campaign
     campaign = Campaign(
         brand_key=body.brand_key,
-        name=data.get("name", "AI Campaign"),
+        name=data.get("name") or "AI Campaign",
         theme=data.get("theme"),
         visual_direction=data.get("visual_direction"),
         notes=data.get("notes"),
@@ -138,8 +161,39 @@ async def generate_campaign(
         status="draft",
     )
     db.add(campaign)
+    await db.flush()  # get campaign.id before creating posts
+
+    # Persist posts
+    posts_data = data.get("posts") or []
+    created_items: list[ContentItem] = []
+    for p in posts_data:
+        channel = p.get("channel", "instagram_post")
+        post_type = p.get("post_type", "static")
+        content_type = "image" if channel in ("instagram_post", "instagram_stories", "tiktok", "facebook_post") else "email"
+        item = ContentItem(
+            brand_key=body.brand_key,
+            campaign_id=campaign.id,
+            campaign=campaign.name,
+            product_name=p.get("product_name") or campaign.name,
+            channel=channel,
+            content_type=content_type,
+            post_type=post_type,
+            scheduled_date=p.get("scheduled_date"),
+            visual_direction=p.get("visual_direction") or campaign.visual_direction,
+            status="pending",
+            image_source_type="not_set",
+        )
+        db.add(item)
+        created_items.append(item)
+
     await db.commit()
     await db.refresh(campaign)
+    for item in created_items:
+        await db.refresh(item)
 
-    from api.schemas.campaign import CampaignEntityRead
-    return {"campaign": CampaignEntityRead.model_validate(campaign)}
+    from api.schemas.campaign import CampaignEntityWithPosts
+    from api.schemas.content import ContentItemRead
+
+    result = CampaignEntityWithPosts.model_validate(campaign)
+    result.posts = [ContentItemRead.model_validate(i) for i in created_items]
+    return result
