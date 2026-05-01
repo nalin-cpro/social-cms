@@ -118,53 +118,84 @@ function PostRow({ item, onClick }: { item: ContentItem; onClick: () => void }) 
     published: '#16A34A',
   }
   const left = borderColor[item.status] ?? 'transparent'
+
+  const needsReview = item.status === 'changes_requested' || item.status === 'ready_for_internal_review'
+  const needsGenerate = item.status === 'pending' && !item.feed_post_url
+  const isApproved = item.status === 'approved' || item.status === 'published'
+
   return (
     <div
-      onClick={onClick}
       className="flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors"
       style={{ borderLeft: `3px solid ${left}`, borderBottom: '1px solid #f4f6fb' }}
       onMouseEnter={e => (e.currentTarget.style.background = '#f8f9ff')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
+      {/* Thumbnail */}
+      <div className="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden"
+        style={{ background: '#e8ebf5' }}>
+        {item.feed_post_url
+          ? <img src={item.feed_post_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          : <div className="w-full h-full flex items-center justify-center" style={{ color: '#8892b8', fontSize: 10, fontWeight: 600 }}>
+              {item.channel.slice(0, 2).toUpperCase()}
+            </div>
+        }
+      </div>
+
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate" style={{ color: '#1a1f3a' }}>{item.product_name}</p>
+        <p className="font-medium truncate" style={{ fontSize: 12, color: '#1a1f3a' }}>{item.product_name}</p>
         <div className="flex items-center gap-2 mt-0.5">
           <ChannelBadge channel={item.channel} />
           {item.scheduled_date && (
-            <span className="text-xs" style={{ color: '#8892b8' }}>
+            <span style={{ fontSize: 10, color: '#8892b8' }}>
               {new Date(item.scheduled_date).toLocaleDateString('en', { month: 'short', day: 'numeric' })}
             </span>
           )}
         </div>
       </div>
+
       <StatusBadge status={item.status as ContentStatus} />
+
+      {/* Action button */}
+      <button
+        onClick={onClick}
+        className="flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg ml-1"
+        style={needsReview
+          ? { background: '#e8f8ef', color: '#0f7b3f' }
+          : needsGenerate
+          ? { background: NAVY, color: '#fff' }
+          : { background: '#f4f6fb', color: '#4a5280' }}
+      >
+        {needsReview ? 'Review →' : needsGenerate ? '▸ Generate' : 'View'}
+      </button>
     </div>
   )
 }
 
 // ── Campaign card ─────────────────────────────────────────────────────────────
 function CampaignCard({
-  campaign, isAdmin, onUpdate, onSendToClient, autoExpand,
+  campaign, posts, loadingPosts, isAdmin, onToggle, onSendToClient, autoExpand,
 }: {
   campaign: Campaign
+  posts: ContentItem[]
+  loadingPosts: boolean
   isAdmin: boolean
-  onUpdate: (c: Campaign) => void
+  onToggle: (id: number, open: boolean) => void
   onSendToClient: (c: Campaign) => void
   autoExpand?: boolean
 }) {
   const [open, setOpen] = useState(autoExpand ?? true)
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null)
   const { user } = useAuth()
-  const posts = campaign.posts ?? []
-  const total   = posts.length
+
+  const total    = posts.length
   const approved = posts.filter(p => ['approved', 'published'].includes(p.status)).length
   const attention = posts.filter(p => ['changes_requested', 'error'].includes(p.status)).length
   const progress = total > 0 ? Math.round((approved / total) * 100) : 0
 
-  const handleItemUpdate = (updated: ContentItem) => {
-    const newPosts = posts.map(p => p.id === updated.id ? updated : p)
-    onUpdate({ ...campaign, posts: newPosts })
-    setSelectedItem(updated)
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next) onToggle(campaign.id, true)
   }
 
   return (
@@ -174,7 +205,7 @@ function CampaignCard({
         <div
           className="flex items-center gap-3 px-5 py-3.5 cursor-pointer select-none"
           style={{ borderBottom: open ? '1px solid #dde2f0' : undefined }}
-          onClick={() => setOpen(o => !o)}
+          onClick={toggle}
         >
           <span style={{ color: '#8892b8' }}>
             {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -218,7 +249,19 @@ function CampaignCard({
         {/* Posts */}
         {open && (
           <div>
-            {posts.length === 0 ? (
+            {loadingPosts ? (
+              // Skeleton rows
+              [1, 2, 3].map(i => (
+                <div key={i} className="px-4 py-2.5 flex items-center gap-3" style={{ borderBottom: '1px solid #f4f6fb' }}>
+                  <div className="w-9 h-9 rounded-lg animate-pulse flex-shrink-0" style={{ background: '#e8ebf5' }} />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 rounded animate-pulse w-2/3" style={{ background: '#e8ebf5' }} />
+                    <div className="h-2.5 rounded animate-pulse w-1/3" style={{ background: '#e8ebf5' }} />
+                  </div>
+                  <div className="h-5 w-16 rounded-full animate-pulse" style={{ background: '#e8ebf5' }} />
+                </div>
+              ))
+            ) : posts.length === 0 ? (
               <p className="px-5 py-4 text-sm" style={{ color: '#8892b8' }}>No posts yet for this campaign.</p>
             ) : (
               posts.map(item => (
@@ -234,7 +277,7 @@ function CampaignCard({
           item={selectedItem}
           currentUser={user}
           onClose={() => setSelectedItem(null)}
-          onUpdate={handleItemUpdate}
+          onUpdate={updated => { setSelectedItem(updated) }}
         />
       )}
     </>
@@ -703,6 +746,8 @@ export default function PlanPage() {
   const [showAI, setShowAI] = useState(false)
   const [sendingClient, setSendingClient] = useState<number | null>(null)
   const [newCampaignId, setNewCampaignId] = useState<number | null>(null)
+  const [postsCache, setPostsCache] = useState<Record<number, ContentItem[]>>({})
+  const [loadingPostsMap, setLoadingPostsMap] = useState<Record<number, boolean>>({})
 
   const weeks = useMemo(() => getWeeksForMonth(year, month), [year, month])
   const selectedWeek = weeks[weekIdx] ?? weeks[0]
@@ -718,23 +763,52 @@ export default function PlanPage() {
     }).catch(() => {})
   }, [isAdmin])
 
-  // Load campaigns
+  // Load campaigns (list — no posts included, fetched lazily on expand)
   useEffect(() => {
     if (!selectedBrandKey) return
     setLoading(true)
-    api.get<Campaign[]>(`/campaigns?brand_key=${selectedBrandKey}&include_posts=true`)
-      .then(data => setCampaigns(data))
+    setPostsCache({})
+    api.get<Campaign[]>(`/campaigns?brand=${selectedBrandKey}`)
+      .then(data => {
+        setCampaigns(data)
+        // Pre-fetch posts for all campaigns in background
+        data.forEach(c => fetchPostsForCampaign(c.id, selectedBrandKey))
+      })
       .catch(() => toast('Failed to load campaigns', 'error'))
       .finally(() => setLoading(false))
   }, [selectedBrandKey])
 
+  const fetchPostsForCampaign = useCallback(async (campaignId: number, brandKey?: string) => {
+    const bk = brandKey ?? selectedBrandKey
+    if (!bk) return
+    setLoadingPostsMap(prev => ({ ...prev, [campaignId]: true }))
+    try {
+      const items = await api.get<ContentItem[]>(`/content?brand=${bk}&campaign_id=${campaignId}`)
+      setPostsCache(prev => ({ ...prev, [campaignId]: items }))
+    } catch {
+      setPostsCache(prev => ({ ...prev, [campaignId]: [] }))
+    } finally {
+      setLoadingPostsMap(prev => ({ ...prev, [campaignId]: false }))
+    }
+  }, [selectedBrandKey])
+
   const filteredCampaigns = useMemo(() => {
     if (!selectedWeek) return campaigns
-    return campaigns.filter(c => campaignInWeek(c, selectedWeek))
-  }, [campaigns, selectedWeek])
+    return campaigns.filter(c => {
+      const posts = postsCache[c.id]
+      // If not yet loaded, show the card (don't hide while loading)
+      if (!posts) return true
+      if (posts.length === 0) return true
+      return posts.some(p => {
+        if (!p.scheduled_date) return false
+        const d = new Date(p.scheduled_date)
+        return d >= selectedWeek.start && d <= selectedWeek.end
+      })
+    })
+  }, [campaigns, selectedWeek, postsCache])
 
-  // Stats
-  const allPosts = campaigns.flatMap(c => c.posts ?? [])
+  // Stats — derived from postsCache
+  const allPosts = useMemo(() => Object.values(postsCache).flat(), [postsCache])
   const stats = {
     campaigns: campaigns.length,
     totalPosts: allPosts.length,
@@ -745,9 +819,11 @@ export default function PlanPage() {
 
   const draftCampaigns = campaigns.filter(c => c.status === 'draft')
 
-  const handleCampaignUpdate = useCallback((updated: Campaign) => {
-    setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c))
-  }, [])
+  const handleCampaignToggle = useCallback((id: number) => {
+    if (postsCache[id] === undefined) {
+      fetchPostsForCampaign(id)
+    }
+  }, [postsCache, fetchPostsForCampaign])
 
   const handleSendToClient = async (campaign: Campaign) => {
     setSendingClient(campaign.id)
@@ -896,8 +972,10 @@ export default function PlanPage() {
                 <CampaignCard
                   key={c.id}
                   campaign={c}
+                  posts={postsCache[c.id] ?? []}
+                  loadingPosts={postsCache[c.id] === undefined || (loadingPostsMap[c.id] ?? false)}
                   isAdmin={isAdmin}
-                  onUpdate={handleCampaignUpdate}
+                  onToggle={handleCampaignToggle}
                   onSendToClient={handleSendToClient}
                   autoExpand={c.id === newCampaignId}
                 />
@@ -934,7 +1012,17 @@ export default function PlanPage() {
           brandKey={selectedBrandKey}
           brands={brands}
           onClose={() => setShowNewModal(false)}
-          onCreate={c => { setCampaigns(prev => [c, ...prev]); setNewCampaignId(c.id); setShowNewModal(false) }}
+          onCreate={c => {
+            setCampaigns(prev => [c, ...prev])
+            setNewCampaignId(c.id)
+            // Seed the posts cache immediately from the AI-generated response
+            if (c.posts && c.posts.length > 0) {
+              setPostsCache(prev => ({ ...prev, [c.id]: c.posts! }))
+            } else {
+              fetchPostsForCampaign(c.id)
+            }
+            setShowNewModal(false)
+          }}
         />
       )}
       {showImportModal && selectedBrandKey && (
