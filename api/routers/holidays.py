@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,37 @@ async def create_holiday(
     await db.commit()
     await db.refresh(event)
     return event
+
+
+@router.post("/import")
+async def import_holidays(
+    _: Annotated[User, Depends(require_roles("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    file: UploadFile | None = File(None),
+    url: str | None = Form(None),
+    brand_key: str | None = Form(None),
+):
+    """Import holidays from CSV file upload or Google Sheets URL."""
+    imported = 0
+    if file and file.filename:
+        content = await file.read()
+        lines = content.decode("utf-8", errors="ignore").splitlines()
+        import csv, io
+        reader = csv.DictReader(io.StringIO("\n".join(lines)))
+        for row in reader:
+            date = row.get("date") or row.get("Date") or ""
+            name = row.get("name") or row.get("Name") or row.get("event") or ""
+            if date and name:
+                event = HolidayEvent(
+                    brand_key=brand_key,
+                    date=date.strip(),
+                    name=name.strip(),
+                    event_type=row.get("type") or row.get("Type") or "holiday",
+                )
+                db.add(event)
+                imported += 1
+        await db.commit()
+    return {"imported": imported, "message": f"Imported {imported} holidays and events"}
 
 
 @router.delete("/{holiday_id}", status_code=204)

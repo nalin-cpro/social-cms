@@ -181,6 +181,23 @@ def _run_campaign_pipeline(campaign_id: int) -> None:
     asyncio.run(_do())
 
 
+@router.post("/{campaign_id}/send-to-client")
+async def send_campaign_to_client(
+    campaign_id: int,
+    _: Annotated[User, Depends(require_roles("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign.status = "sent_to_client"
+    campaign.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(campaign)
+    return {"status": "sent", "campaign_id": campaign_id}
+
+
 @router.post("/{campaign_id}/generate")
 async def generate_campaign_posts(
     campaign_id: int,

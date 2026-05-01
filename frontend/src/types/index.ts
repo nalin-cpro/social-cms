@@ -102,7 +102,7 @@ export interface Campaign {
   start_date: string | null
   end_date: string | null
   created_by: number | null
-  status: 'active' | 'draft' | 'complete'
+  status: 'active' | 'draft' | 'sent_to_client' | 'complete'
   notes: string | null
   created_at: string
   updated_at: string
