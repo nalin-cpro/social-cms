@@ -51,5 +51,6 @@ export const api = {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: data.toString(),
     }),
+  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   postMultipart: <T>(path: string, data: FormData) => requestMultipart<T>(path, data),
 }

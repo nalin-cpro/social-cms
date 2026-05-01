@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import Sidebar from '../../components/Sidebar'
 import StatusBadge from '../../components/StatusBadge'
 import PostDrawer from '../../components/PostDrawer'
@@ -171,32 +171,101 @@ function PostRow({ item, onClick }: { item: ContentItem; onClick: () => void }) 
   )
 }
 
+// ── Delete confirmation dialog ────────────────────────────────────────────────
+function DeleteConfirmDialog({
+  campaignName, postCount, onConfirm, onCancel, deleting,
+}: {
+  campaignName: string; postCount: number; onConfirm: () => void; onCancel: () => void; deleting: boolean
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }}>
+      <div className="rounded-2xl overflow-hidden w-full max-w-sm mx-4" style={{ background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <div className="px-6 pt-6 pb-2">
+          <p className="text-base font-semibold mb-2" style={{ color: '#1a1f3a' }}>Delete "{campaignName}"?</p>
+          <p className="text-sm" style={{ color: '#4a5280' }}>
+            This will also delete all {postCount} post{postCount !== 1 ? 's' : ''} inside it that haven't been approved. This cannot be undone.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-6 py-4">
+          <button onClick={onCancel} className="px-4 py-2 text-sm rounded-lg"
+            style={{ border: '1px solid #dde2f0', color: '#4a5280' }}>Cancel</button>
+          <button onClick={onConfirm} disabled={deleting}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-40"
+            style={{ background: '#DC2626', color: '#fff' }}>
+            {deleting ? <Loader2 size={13} className="animate-spin" /> : null}
+            Delete campaign
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Campaign card ─────────────────────────────────────────────────────────────
 function CampaignCard({
-  campaign, posts, loadingPosts, isAdmin, onToggle, onSendToClient, autoExpand,
+  campaign, brandKey, isAdmin, onSendToClient, onDeleted, autoExpand,
 }: {
   campaign: Campaign
-  posts: ContentItem[]
-  loadingPosts: boolean
+  brandKey: string
   isAdmin: boolean
-  onToggle: (id: number, open: boolean) => void
   onSendToClient: (c: Campaign) => void
+  onDeleted: (id: number) => void
   autoExpand?: boolean
 }) {
   const [open, setOpen] = useState(autoExpand ?? true)
+  const [posts, setPosts] = useState<ContentItem[]>([])
+  const [loadingPosts, setLoadingPosts] = useState(true)
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const { user } = useAuth()
+  const { toast } = useToast()
+
+  // Fetch posts on mount
+  useEffect(() => {
+    if (!brandKey) return
+    setLoadingPosts(true)
+    api.get<ContentItem[]>(`/content?brand=${brandKey}&campaign_id=${campaign.id}`)
+      .then(items => setPosts(items))
+      .catch(() => setPosts([]))
+      .finally(() => setLoadingPosts(false))
+  }, [campaign.id, brandKey])
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await api.delete(`/campaigns/${campaign.id}`)
+      toast('Campaign deleted')
+      onDeleted(campaign.id)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Delete failed'
+      if (msg.includes('approved')) {
+        toast('Cannot delete — this campaign has approved posts', 'error')
+      } else {
+        toast(msg, 'error')
+      }
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
 
   const total    = posts.length
   const approved = posts.filter(p => ['approved', 'published'].includes(p.status)).length
   const attention = posts.filter(p => ['changes_requested', 'error'].includes(p.status)).length
   const progress = total > 0 ? Math.round((approved / total) * 100) : 0
-
-  const toggle = () => {
-    const next = !open
-    setOpen(next)
-    if (next) onToggle(campaign.id, true)
-  }
 
   return (
     <>
@@ -205,7 +274,7 @@ function CampaignCard({
         <div
           className="flex items-center gap-3 px-5 py-3.5 cursor-pointer select-none"
           style={{ borderBottom: open ? '1px solid #dde2f0' : undefined }}
-          onClick={toggle}
+          onClick={() => setOpen(o => !o)}
         >
           <span style={{ color: '#8892b8' }}>
             {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -219,7 +288,7 @@ function CampaignCard({
               <p className="text-xs mt-0.5 truncate" style={{ color: '#8892b8' }}>{campaign.theme}</p>
             )}
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0" onClick={e => e.stopPropagation()}>
             {total > 0 && (
               <div className="flex items-center gap-2">
                 <div className="w-20 h-1.5 rounded-full" style={{ background: '#e8ebf5' }}>
@@ -236,12 +305,51 @@ function CampaignCard({
             )}
             {isAdmin && campaign.status === 'draft' && (
               <button
-                onClick={e => { e.stopPropagation(); onSendToClient(campaign) }}
+                onClick={() => onSendToClient(campaign)}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-lg"
                 style={{ background: NAVY, color: '#fff' }}
               >
                 <Send size={11} /> Send to client
               </button>
+            )}
+            {/* ⋯ overflow menu */}
+            {isAdmin && (
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setMenuOpen(m => !m)}
+                  className="p-1.5 rounded-lg text-xs font-bold leading-none"
+                  style={{ color: '#8892b8', background: menuOpen ? '#f4f6fb' : 'transparent' }}
+                >
+                  ⋯
+                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-20 rounded-xl overflow-hidden"
+                    style={{ background: '#fff', border: '1px solid #dde2f0', boxShadow: '0 8px 24px rgba(0,0,0,0.10)', minWidth: 160 }}>
+                    <button className="w-full text-left px-4 py-2.5 text-sm"
+                      style={{ color: '#1a1f3a' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f4f6fb')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      onClick={() => setMenuOpen(false)}>
+                      Edit brief
+                    </button>
+                    <button className="w-full text-left px-4 py-2.5 text-sm"
+                      style={{ color: '#1a1f3a' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f4f6fb')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      onClick={() => setMenuOpen(false)}>
+                      Duplicate campaign
+                    </button>
+                    <div style={{ height: 1, background: '#dde2f0', margin: '4px 0' }} />
+                    <button className="w-full text-left px-4 py-2.5 text-sm font-medium"
+                      style={{ color: '#DC2626' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#fff4f3')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      onClick={() => { setMenuOpen(false); setConfirmDelete(true) }}>
+                      Delete campaign
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -250,7 +358,6 @@ function CampaignCard({
         {open && (
           <div>
             {loadingPosts ? (
-              // Skeleton rows
               [1, 2, 3].map(i => (
                 <div key={i} className="px-4 py-2.5 flex items-center gap-3" style={{ borderBottom: '1px solid #f4f6fb' }}>
                   <div className="w-9 h-9 rounded-lg animate-pulse flex-shrink-0" style={{ background: '#e8ebf5' }} />
@@ -277,7 +384,17 @@ function CampaignCard({
           item={selectedItem}
           currentUser={user}
           onClose={() => setSelectedItem(null)}
-          onUpdate={updated => { setSelectedItem(updated) }}
+          onUpdate={updated => setSelectedItem(updated)}
+        />
+      )}
+
+      {confirmDelete && (
+        <DeleteConfirmDialog
+          campaignName={campaign.name}
+          postCount={total}
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+          deleting={deleting}
         />
       )}
     </>
@@ -746,8 +863,6 @@ export default function PlanPage() {
   const [showAI, setShowAI] = useState(false)
   const [sendingClient, setSendingClient] = useState<number | null>(null)
   const [newCampaignId, setNewCampaignId] = useState<number | null>(null)
-  const [postsCache, setPostsCache] = useState<Record<number, ContentItem[]>>({})
-  const [loadingPostsMap, setLoadingPostsMap] = useState<Record<number, boolean>>({})
 
   const weeks = useMemo(() => getWeeksForMonth(year, month), [year, month])
   const selectedWeek = weeks[weekIdx] ?? weeks[0]
@@ -763,67 +878,31 @@ export default function PlanPage() {
     }).catch(() => {})
   }, [isAdmin])
 
-  // Load campaigns (list — no posts included, fetched lazily on expand)
+  // Load campaigns
   useEffect(() => {
     if (!selectedBrandKey) return
     setLoading(true)
-    setPostsCache({})
     api.get<Campaign[]>(`/campaigns?brand=${selectedBrandKey}`)
-      .then(data => {
-        setCampaigns(data)
-        // Pre-fetch posts for all campaigns in background
-        data.forEach(c => fetchPostsForCampaign(c.id, selectedBrandKey))
-      })
+      .then(data => setCampaigns(data))
       .catch(() => toast('Failed to load campaigns', 'error'))
       .finally(() => setLoading(false))
   }, [selectedBrandKey])
 
-  const fetchPostsForCampaign = useCallback(async (campaignId: number, brandKey?: string) => {
-    const bk = brandKey ?? selectedBrandKey
-    if (!bk) return
-    setLoadingPostsMap(prev => ({ ...prev, [campaignId]: true }))
-    try {
-      const items = await api.get<ContentItem[]>(`/content?brand=${bk}&campaign_id=${campaignId}`)
-      setPostsCache(prev => ({ ...prev, [campaignId]: items }))
-    } catch {
-      setPostsCache(prev => ({ ...prev, [campaignId]: [] }))
-    } finally {
-      setLoadingPostsMap(prev => ({ ...prev, [campaignId]: false }))
-    }
-  }, [selectedBrandKey])
-
   const filteredCampaigns = useMemo(() => {
     if (!selectedWeek) return campaigns
-    return campaigns.filter(c => {
-      const posts = postsCache[c.id]
-      // If not yet loaded, show the card (don't hide while loading)
-      if (!posts) return true
-      if (posts.length === 0) return true
-      return posts.some(p => {
-        if (!p.scheduled_date) return false
-        const d = new Date(p.scheduled_date)
-        return d >= selectedWeek.start && d <= selectedWeek.end
-      })
-    })
-  }, [campaigns, selectedWeek, postsCache])
+    // Without posts loaded at page level, show all campaigns (cards fetch their own posts)
+    return campaigns
+  }, [campaigns, selectedWeek])
 
-  // Stats — derived from postsCache
-  const allPosts = useMemo(() => Object.values(postsCache).flat(), [postsCache])
   const stats = {
     campaigns: campaigns.length,
-    totalPosts: allPosts.length,
-    approved: allPosts.filter(p => ['approved', 'published'].includes(p.status)).length,
-    pending: allPosts.filter(p => ['pending', 'generating', 'ready_for_approval', 'ready_for_internal_review', 'internal_approved'].includes(p.status)).length,
-    attention: allPosts.filter(p => ['changes_requested', 'error'].includes(p.status)).length,
+    totalPosts: 0,
+    approved: 0,
+    pending: 0,
+    attention: 0,
   }
 
   const draftCampaigns = campaigns.filter(c => c.status === 'draft')
-
-  const handleCampaignToggle = useCallback((id: number) => {
-    if (postsCache[id] === undefined) {
-      fetchPostsForCampaign(id)
-    }
-  }, [postsCache, fetchPostsForCampaign])
 
   const handleSendToClient = async (campaign: Campaign) => {
     setSendingClient(campaign.id)
@@ -972,11 +1051,10 @@ export default function PlanPage() {
                 <CampaignCard
                   key={c.id}
                   campaign={c}
-                  posts={postsCache[c.id] ?? []}
-                  loadingPosts={postsCache[c.id] === undefined || (loadingPostsMap[c.id] ?? false)}
+                  brandKey={selectedBrandKey}
                   isAdmin={isAdmin}
-                  onToggle={handleCampaignToggle}
                   onSendToClient={handleSendToClient}
+                  onDeleted={id => setCampaigns(prev => prev.filter(x => x.id !== id))}
                   autoExpand={c.id === newCampaignId}
                 />
               ))}
@@ -1015,12 +1093,6 @@ export default function PlanPage() {
           onCreate={c => {
             setCampaigns(prev => [c, ...prev])
             setNewCampaignId(c.id)
-            // Seed the posts cache immediately from the AI-generated response
-            if (c.posts && c.posts.length > 0) {
-              setPostsCache(prev => ({ ...prev, [c.id]: c.posts! }))
-            } else {
-              fetchPostsForCampaign(c.id)
-            }
             setShowNewModal(false)
           }}
         />

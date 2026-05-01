@@ -133,18 +133,36 @@ async def update_campaign(
     return campaign
 
 
-@router.delete("/{campaign_id}", status_code=204)
+@router.delete("/{campaign_id}")
 async def delete_campaign(
     campaign_id: int,
     _: Annotated[User, Depends(require_roles("admin"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    from sqlalchemy import delete as sql_delete
     result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
     campaign = result.scalar_one_or_none()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Block delete if any posts are approved or published
+    approved_result = await db.execute(
+        select(ContentItem).where(
+            ContentItem.campaign_id == campaign_id,
+            ContentItem.status.in_(["approved", "published"]),
+        )
+    )
+    if approved_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete campaign with approved content",
+        )
+
+    # Cascade delete content items then campaign
+    await db.execute(sql_delete(ContentItem).where(ContentItem.campaign_id == campaign_id))
     await db.delete(campaign)
     await db.commit()
+    return {"message": "Campaign deleted"}
 
 
 def _run_campaign_pipeline(campaign_id: int) -> None:
