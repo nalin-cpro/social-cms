@@ -524,6 +524,8 @@ interface Props {
 type Tab = 'feed' | 'stories' | 'email'
 
 export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Props) {
+  // Local copy so image shows immediately after upload without waiting for parent re-render
+  const [localPost, setLocalPost] = useState<ContentItem | null>(item)
   const [tab, setTab] = useState<Tab>('feed')
   const [comments, setComments] = useState<ContentComment[]>([])
   const [commentText, setCommentText] = useState('')
@@ -539,6 +541,11 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
   const isDesigner = currentUser.role === 'designer'
   const isClient = currentUser.role === 'client'
 
+  // Sync localPost when parent pushes a new version (e.g. different item opened)
+  useEffect(() => {
+    if (item) setLocalPost(item)
+  }, [item?.id, item?.feed_post_url, item?.status])
+
   useEffect(() => {
     if (!item) return
     setTab(item.channel.includes('email') ? 'email' : item.channel.includes('stor') ? 'stories' : 'feed')
@@ -553,6 +560,13 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
   }, [comments])
 
   if (!item) return null
+  // Use localPost for all rendering so image/source changes are reflected immediately
+  const post = localPost ?? item
+
+  const handleUpdate = (updated: ContentItem) => {
+    setLocalPost(updated)
+    onUpdate(updated)
+  }
 
   const doAction = async (action: string, endpoint: string, body?: Record<string, unknown>) => {
     setActionLoading(action)
@@ -560,7 +574,7 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
       const updated = body
         ? await api.post<ContentItem>(endpoint, body)
         : await api.post<ContentItem>(endpoint)
-      onUpdate(updated)
+      handleUpdate(updated)
     } catch (e) { console.error(action, e) }
     finally { setActionLoading(null) }
   }
@@ -569,14 +583,14 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
     if (!commentText.trim()) return
     setSendingComment(true)
     try {
-      const comment = await api.post<ContentComment>(`/content/${item.id}/comments`, {
+      const comment = await api.post<ContentComment>(`/content/${post.id}/comments`, {
         message: commentText, is_internal: false,
       })
       setComments(prev => [...prev, comment])
       setCommentText('')
       if (isClient) {
-        const updated = await api.get<ContentItem>(`/content/${item.id}`)
-        onUpdate(updated)
+        const updated = await api.get<ContentItem>(`/content/${post.id}`)
+        handleUpdate(updated)
       }
     } catch (e) { console.error(e) }
     finally { setSendingComment(false) }
@@ -586,10 +600,10 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
     if (!regenInstruction.trim()) return
     setActionLoading('regen')
     try {
-      const updated = await api.post<ContentItem>(`/content/${item.id}/regenerate-image`, {
+      const updated = await api.post<ContentItem>(`/content/${post.id}/regenerate-image`, {
         instruction: regenInstruction,
       })
-      onUpdate(updated)
+      handleUpdate(updated)
       setRegenInstruction('')
       setShowRegen(false)
     } catch (e) { console.error(e) }
@@ -600,7 +614,7 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
     if (!suggestionMsg.trim() || !suggestionModal) return
     try {
       await api.post('/suggestions', {
-        content_item_id: item.id,
+        content_item_id: post.id,
         suggestion_type: suggestionModal === 'cancel' ? 'cancel' : 'edit',
         message: suggestionMsg,
       })
@@ -609,19 +623,19 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
     } catch (e) { console.error(e) }
   }
 
-  const isEmail = item.channel === 'email'
+  const isEmail = post.channel === 'email'
   const needsSourceSelector =
     (isAdmin || isDesigner) &&
     !isEmail &&
     (
-      item.image_source_type === 'not_set' ||
-      item.status === 'needs_image_source' ||
-      (item.status === 'pending' && !item.feed_post_url)
+      post.image_source_type === 'not_set' ||
+      post.status === 'needs_image_source' ||
+      (post.status === 'pending' && !post.feed_post_url)
     )
 
   const allTabs: { id: Tab; label: string; show: boolean }[] = [
     { id: 'feed',    label: 'Feed post', show: !isEmail },
-    { id: 'stories', label: 'Stories',   show: !isEmail && item.channel !== 'tiktok' },
+    { id: 'stories', label: 'Stories',   show: !isEmail && post.channel !== 'tiktok' },
     { id: 'email',   label: 'Email',     show: isEmail },
   ]
   const tabs = allTabs.filter(t => t.show)
@@ -632,7 +646,7 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
     approved: '#16A34A',
     needs_image_source: '#E65100',
   }
-  const borderColor = statusBorderColor[item.status] || 'transparent'
+  const borderColor = statusBorderColor[post.status] || 'transparent'
 
   return (
     <>
@@ -646,11 +660,11 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
           style={{ borderBottom: '1px solid #dde2f0' }}>
           <div className="flex-1 min-w-0 pr-4">
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="font-semibold text-base truncate" style={{ color: '#1a1f3a' }}>{item.product_name}</h2>
-              <StatusBadge status={item.status} small />
+              <h2 className="font-semibold text-base truncate" style={{ color: '#1a1f3a' }}>{post.product_name}</h2>
+              <StatusBadge status={post.status} small />
             </div>
             <p className="text-xs" style={{ color: '#8892b8' }}>
-              {item.channel} · {item.scheduled_date || 'No date'} · {item.campaign}
+              {post.channel} · {post.scheduled_date || 'No date'} · {post.campaign}
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg flex-shrink-0" style={{ color: '#8892b8' }}
@@ -683,16 +697,16 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
                 {needsSourceSelector ? 'Image source' : 'Feed Post'}
               </p>
               {needsSourceSelector
-                ? <ImageSourceSelector item={item} onUpdate={onUpdate} />
-                : <SafeImage src={item.feed_post_url} alt={item.product_name}
+                ? <ImageSourceSelector item={post} onUpdate={handleUpdate} />
+                : <SafeImage src={post.feed_post_url} alt={post.product_name}
                     className="w-full rounded-xl object-cover" style={{ maxHeight: 320 }} />
               }
-              {!needsSourceSelector && item.qc_score != null && (
+              {!needsSourceSelector && post.qc_score != null && (
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs" style={{ color: '#8892b8' }}>QC Score</span>
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                    style={{ background: item.qc_score >= 7 ? '#f0fdf4' : '#fff8e0', color: item.qc_score >= 7 ? '#15803d' : '#92400e' }}>
-                    {item.qc_score}/10
+                    style={{ background: post.qc_score >= 7 ? '#f0fdf4' : '#fff8e0', color: post.qc_score >= 7 ? '#15803d' : '#92400e' }}>
+                    {post.qc_score}/10
                   </span>
                 </div>
               )}
@@ -703,9 +717,9 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
             <div>
               <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#8892b8' }}>Stories</p>
               <div className="grid grid-cols-2 gap-3">
-                <SafeImage src={item.story_1_url} alt="Story 1"
+                <SafeImage src={post.story_1_url} alt="Story 1"
                   className="w-full rounded-xl object-cover" style={{ aspectRatio: '9/16', maxHeight: 280 }} />
-                <SafeImage src={item.story_2_url} alt="Story 2"
+                <SafeImage src={post.story_2_url} alt="Story 2"
                   className="w-full rounded-xl object-cover" style={{ aspectRatio: '9/16', maxHeight: 280 }} />
               </div>
             </div>
@@ -717,10 +731,10 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
                 <AlertCircle size={14} style={{ color: '#8892b8' }} />
                 <p className="text-xs" style={{ color: '#8892b8' }}>Email content — no image preview.</p>
               </div>
-              {item.copy_json?.subject_lines && (
+              {post.copy_json?.subject_lines && (
                 <div className="mb-2">
                   <p className="text-xs font-semibold mb-1" style={{ color: '#1a1f3a' }}>Subject lines</p>
-                  {item.copy_json.subject_lines.map((s: string, i: number) => (
+                  {post.copy_json.subject_lines.map((s: string, i: number) => (
                     <p key={i} className="text-sm" style={{ color: '#1a1f3a' }}>• {s}</p>
                   ))}
                 </div>
@@ -729,10 +743,10 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
           )}
 
           {/* Copy */}
-          {item.copy_json && (
+          {post.copy_json && (
             <div>
               <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#8892b8' }}>Copy</p>
-              <CopyPreview copy={item.copy_json} channel={item.channel} />
+              <CopyPreview copy={post.copy_json} channel={post.channel} />
             </div>
           )}
 
@@ -821,8 +835,8 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            {isAdmin && item.status === 'ready_for_internal_review' && (
-              <button onClick={() => doAction('internal-approve', `/content/${item.id}/internal-approve`)}
+            {isAdmin && post.status === 'ready_for_internal_review' && (
+              <button onClick={() => doAction('internal-approve', `/content/${post.id}/internal-approve`)}
                 disabled={actionLoading === 'internal-approve'}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
                 style={{ background: NAVY, color: '#fff' }}>
@@ -830,8 +844,8 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
                 Approve internally
               </button>
             )}
-            {(isAdmin || isDesigner) && ['internal_approved', 'ready_for_internal_review'].includes(item.status) && (
-              <button onClick={() => doAction('send-to-client', `/content/${item.id}/send-to-client`)}
+            {(isAdmin || isDesigner) && ['internal_approved', 'ready_for_internal_review'].includes(post.status) && (
+              <button onClick={() => doAction('send-to-client', `/content/${post.id}/send-to-client`)}
                 disabled={actionLoading === 'send-to-client'}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
                 style={{ background: '#7c3aed', color: '#fff' }}>
@@ -839,8 +853,8 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
                 Send to client
               </button>
             )}
-            {isClient && item.status === 'ready_for_approval' && (
-              <button onClick={() => doAction('approve', `/content/${item.id}/approve`)}
+            {isClient && post.status === 'ready_for_approval' && (
+              <button onClick={() => doAction('approve', `/content/${post.id}/approve`)}
                 disabled={actionLoading === 'approve'}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
                 style={{ background: GOLD, color: '#1a1f3a' }}>
@@ -848,8 +862,8 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
                 Approve
               </button>
             )}
-            {isAdmin && !['cancelled', 'published'].includes(item.status) && (
-              <button onClick={() => doAction('cancel', `/content/${item.id}/cancel`)}
+            {isAdmin && !['cancelled', 'published'].includes(post.status) && (
+              <button onClick={() => doAction('cancel', `/content/${post.id}/cancel`)}
                 disabled={actionLoading === 'cancel'}
                 className="text-xs px-3 py-1.5 rounded-lg"
                 style={{ border: '1px solid #dde2f0', color: '#4a5280', background: '#fff' }}>
@@ -857,7 +871,7 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
               </button>
             )}
           </div>
-          {item.status === 'approved' && (
+          {post.status === 'approved' && (
             <p className="text-xs text-center py-1 font-medium" style={{ color: '#15803d' }}>
               Approved — this content is ready to publish.
             </p>
