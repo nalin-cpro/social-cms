@@ -7,6 +7,7 @@ import { ContentItem, ContentComment, User } from '../types'
 import { api } from '../api/client'
 import StatusBadge from './StatusBadge'
 import CopyPreview from './CopyPreview'
+import { useToast } from '../contexts/ToastContext'
 
 const NAVY = '#1a2d82'
 const GOLD = '#f5b800'
@@ -219,12 +220,14 @@ interface ImageSourceSelectorProps {
 }
 
 function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
+  const { toast } = useToast()
   const [shopifyLoading, setShopifyLoading] = useState(false)
   const [shopifyResult, setShopifyResult] = useState<{ found: boolean; image_url?: string; product_name?: string } | null>(null)
   const [assetBrowserOpen, setAssetBrowserOpen] = useState(false)
   const [adapting, setAdapting] = useState(false)
-  const [uploadLoading, setUploadLoading] = useState(false)
-  const [uploadUrl, setUploadUrl] = useState('')
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle')
+  const [uploadedUrl, setUploadedUrl] = useState('')
+  const [uploadedName, setUploadedName] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [activeSource, setActiveSource] = useState<'shopify' | 'asset' | 'upload' | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -249,21 +252,11 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
   const useAssetAsIs = async (asset: ContentItem) => {
     setAdapting(true)
     try {
-      await api.patch<ContentItem>(`/content/${item.id}`, {
-        status: item.status,
-      })
-      // Directly set the feed_post_url via PATCH
       const updated = await api.patch<ContentItem>(`/content/${item.id}`, {
+        feed_post_url: asset.feed_post_url,
         image_source_type: 'asset_library',
       })
-      // We need to copy the asset's URL to this item
-      await fetch(`${BASE_URL}/content/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ feed_post_url: asset.feed_post_url }),
-      })
-      const fresh = await api.get<ContentItem>(`/content/${item.id}`)
-      onUpdate(fresh)
+      onUpdate(updated)
       setAssetBrowserOpen(false)
     } catch (e) { console.error(e) }
     finally { setAdapting(false) }
@@ -285,21 +278,37 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
   }
 
   const handleFileUpload = async (file: File) => {
-    setUploadLoading(true)
+    setUploadState('uploading')
+    setUploadedName(file.name)
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('content_item_id', String(item.id))
+    formData.append('brand_key', item.brand_key)
+
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const token = localStorage.getItem('token')
-      const res = await fetch(
-        `${BASE_URL}/assets/upload?brand_key=${item.brand_key}&content_item_id=${item.id}`,
-        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form }
-      )
-      if (res.ok) {
-        const updated = await api.get<ContentItem>(`/content/${item.id}`)
-        onUpdate(updated)
-      }
-    } catch (e) { console.error(e) }
-    finally { setUploadLoading(false) }
+      const response = await fetch('/api/assets/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        // DO NOT set Content-Type — browser sets it with the multipart boundary
+        body: formData,
+      })
+
+      if (!response.ok) throw new Error('Upload failed')
+      const data = await response.json()
+
+      // Patch the content item with the new URL and source type
+      await api.patch(`/content/${item.id}`, {
+        feed_post_url: data.feed_post_url,
+        image_source_type: 'manual_upload',
+      })
+
+      setUploadedUrl(data.feed_post_url)
+      setUploadState('done')
+    } catch {
+      setUploadState('error')
+      toast('Upload failed — please try again', 'error')
+    }
   }
 
   const cardStyle = (source: 'shopify' | 'asset' | 'upload') => ({
@@ -337,12 +346,21 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
 
           {shopifyResult && (
             <div className="mt-2 mb-2">
-              {shopifyResult.found
-                ? <div className="flex items-center gap-1.5 text-xs" style={{ color: '#15803d' }}>
-                    <CheckCircle2 size={12} /> Product found — {shopifyResult.product_name}
+              {shopifyResult.found ? (
+                <div className="flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-lg"
+                  style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>
+                  <CheckCircle2 size={12} />
+                  <span>Found in Shopify — {shopifyResult.product_name}</span>
+                </div>
+              ) : (
+                <div className="px-3 py-2.5 rounded-lg text-xs"
+                  style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
+                  <div className="flex items-center gap-1.5 font-semibold mb-1">
+                    <AlertCircle size={12} /> Not found in Shopify
                   </div>
-                : <div className="text-xs" style={{ color: '#b91c1c' }}>Product not found in Shopify.</div>
-              }
+                  <p>The product name may not match exactly. Try a different source or edit the product name.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -353,7 +371,7 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
             style={{ background: NAVY, color: '#fff' }}
           >
             {shopifyLoading ? <Loader2 size={11} className="animate-spin" /> : <Store size={11} />}
-            {shopifyResult?.found ? 'Use this product → generate lifestyle' : 'Fetch from Shopify'}
+            {shopifyResult?.found ? 'Proceed → generate lifestyle' : 'Fetch from Shopify'}
           </button>
         </div>
 
@@ -366,7 +384,7 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
             </div>
             <div>
               <p className="text-xs font-semibold" style={{ color: '#1a1f3a' }}>Asset library</p>
-              <p className="text-xs" style={{ color: '#8892b8' }}>Reuse an existing approved photo</p>
+              <p className="text-xs" style={{ color: '#8892b8' }}>Browse past approved photos</p>
             </div>
             <ChevronRight size={14} style={{ color: '#8892b8', marginLeft: 'auto' }} />
           </div>
@@ -381,34 +399,89 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
             </div>
             <div>
               <p className="text-xs font-semibold" style={{ color: '#1a1f3a' }}>Upload your own</p>
-              <p className="text-xs" style={{ color: '#8892b8' }}>JPG / PNG / WebP, min 1080px</p>
+              <p className="text-xs" style={{ color: '#8892b8' }}>Upload from Figma or your files</p>
             </div>
           </div>
 
           {activeSource === 'upload' && (
-            <div
-              className="mt-2 flex flex-col items-center justify-center rounded-lg text-center py-6 cursor-pointer"
-              style={{
-                border: `2px dashed ${dragOver ? NAVY : '#dde2f0'}`,
-                background: dragOver ? '#f0f3ff' : '#f4f6fb',
-              }}
-              onClick={e => { e.stopPropagation(); fileRef.current?.click() }}
-              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={e => {
-                e.preventDefault(); setDragOver(false)
-                const file = e.dataTransfer.files[0]
-                if (file) handleFileUpload(file)
-              }}
-            >
-              {uploadLoading
-                ? <Loader2 size={20} className="animate-spin" style={{ color: NAVY }} />
-                : <>
-                    <Upload size={20} style={{ color: '#8892b8', marginBottom: 6 }} />
-                    <p className="text-xs" style={{ color: '#4a5280' }}>Drop image here or click to browse</p>
-                  </>
-              }
-            </div>
+            <>
+              {uploadState === 'idle' && (
+                <div
+                  className="mt-2 flex flex-col items-center justify-center rounded-lg text-center py-6 cursor-pointer"
+                  style={{ border: `2px dashed ${dragOver ? NAVY : '#dde2f0'}`, background: dragOver ? '#f0f3ff' : '#f4f6fb' }}
+                  onClick={e => { e.stopPropagation(); fileRef.current?.click() }}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setDragOver(false)
+                    const f = e.dataTransfer.files?.[0]
+                    if (f) handleFileUpload(f)
+                  }}
+                >
+                  <Upload size={20} style={{ color: '#8892b8', marginBottom: 6 }} />
+                  <p className="text-xs" style={{ color: '#4a5280' }}>Drop image here or click to browse</p>
+                </div>
+              )}
+
+              {uploadState === 'uploading' && (
+                <div className="mt-2 rounded-lg px-4 py-4" style={{ border: '1px solid #dde2f0', background: '#f4f6fb' }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Loader2 size={14} className="animate-spin" style={{ color: NAVY }} />
+                    <p className="text-xs truncate" style={{ color: '#1a1f3a' }}>{uploadedName}</p>
+                  </div>
+                  <p className="text-xs mb-2" style={{ color: '#8892b8' }}>Uploading...</p>
+                  <div className="h-1 rounded-full overflow-hidden" style={{ background: '#dde2f0' }}>
+                    <div className="h-full rounded-full animate-pulse" style={{ background: NAVY, width: '60%' }} />
+                  </div>
+                </div>
+              )}
+
+              {uploadState === 'done' && (
+                <div className="mt-2 rounded-lg p-3 flex items-center gap-3"
+                  style={{ border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+                  {uploadedUrl && (
+                    <img
+                      src={uploadedUrl.startsWith('/') ? `${BASE_URL}${uploadedUrl}` : uploadedUrl}
+                      alt=""
+                      className="w-12 h-12 rounded object-cover flex-shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <CheckCircle2 size={12} style={{ color: '#15803d' }} />
+                      <p className="text-xs font-semibold" style={{ color: '#15803d' }}>Uploaded</p>
+                    </div>
+                    <p className="text-xs truncate" style={{ color: '#4a5280' }}>{uploadedName}</p>
+                  </div>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      onUpdate({ ...item, feed_post_url: uploadedUrl, image_source_type: 'manual_upload' })
+                    }}
+                    className="flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg"
+                    style={{ background: GOLD, color: '#1a1f3a' }}
+                  >
+                    Use this image
+                  </button>
+                </div>
+              )}
+
+              {uploadState === 'error' && (
+                <div className="mt-2 rounded-lg px-4 py-4"
+                  style={{ border: '2px solid #DC2626', background: '#fef2f2' }}>
+                  <p className="text-xs font-medium mb-2" style={{ color: '#DC2626' }}>
+                    Upload failed — please try again
+                  </p>
+                  <button
+                    onClick={e => { e.stopPropagation(); setUploadState('idle') }}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                    style={{ background: '#fff', border: '1px solid #DC2626', color: '#DC2626' }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           <input
@@ -416,7 +489,12 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
             type="file"
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }}
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) handleFileUpload(f)
+              // Reset input so the same file can be selected again after error
+              e.target.value = ''
+            }}
           />
         </div>
       </div>
@@ -535,7 +613,11 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
   const needsSourceSelector =
     (isAdmin || isDesigner) &&
     !isEmail &&
-    (item.image_source_type === 'not_set' || item.status === 'needs_image_source')
+    (
+      item.image_source_type === 'not_set' ||
+      item.status === 'needs_image_source' ||
+      (item.status === 'pending' && !item.feed_post_url)
+    )
 
   const allTabs: { id: Tab; label: string; show: boolean }[] = [
     { id: 'feed',    label: 'Feed post', show: !isEmail },

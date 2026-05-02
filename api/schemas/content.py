@@ -53,6 +53,8 @@ class ContentItemUpdate(BaseModel):
     status: str | None = None
     visual_direction: str | None = None
     scheduled_date: str | None = None
+    feed_post_url: str | None = None
+    image_source_type: str | None = None
 
 
 class ContentItemCreate(BaseModel):

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,8 +63,8 @@ async def list_assets(
 
 @router.post("/assets/upload")
 async def upload_asset(
-    brand_key: str,
-    content_item_id: int,
+    brand_key: str = Form(...),
+    content_item_id: int = Form(...),
     file: UploadFile = File(...),
     _: Annotated[User, Depends(require_roles("admin", "designer"))] = None,
     db: Annotated[AsyncSession, Depends(get_db)] = None,
