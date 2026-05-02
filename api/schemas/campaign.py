@@ -53,7 +53,7 @@ class CampaignEntityCreate(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     notes: str | None = None
-    status: str = "active"
+    status: str = "draft"
 
 
 class CampaignEntityUpdate(BaseModel):
