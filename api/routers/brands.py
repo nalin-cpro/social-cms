@@ -98,7 +98,7 @@ async def add_memory_rule(
     )
     db.add(rule)
     await db.commit()
-    await db.refresh(rule)
+    # Skip refresh: expire_on_commit=False keeps id/created_at populated.
     return rule
 
 
@@ -122,7 +122,6 @@ async def update_memory_rule(
     if body.status == "confirmed":
         rule.confirmed_by = current_user.id
     await db.commit()
-    await db.refresh(rule)
     return rule
 
 

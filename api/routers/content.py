@@ -283,7 +283,8 @@ async def add_comment(
         background_tasks.add_task(_extract_and_save_brand_rule, item.id, item.brand_key, body.message)
 
     await db.commit()
-    await db.refresh(comment)
+    # Skip refresh: expire_on_commit=False keeps the inserted comment's
+    # attributes (id, created_at) populated in memory after commit.
     return comment
 
 

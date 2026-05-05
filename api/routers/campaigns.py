@@ -64,7 +64,7 @@ async def list_campaigns(
     return result.scalars().all()
 
 
-@router.post("", response_model=CampaignEntityRead)
+@router.post("", response_model=CampaignEntityRead, status_code=201)
 async def create_campaign(
     body: CampaignEntityCreate,
     current_user: Annotated[User, Depends(require_roles("admin"))],
@@ -85,7 +85,8 @@ async def create_campaign(
     )
     db.add(campaign)
     await db.commit()
-    await db.refresh(campaign)
+    # No refresh: expire_on_commit=False keeps in-memory attrs valid, and
+    # refresh-after-commit can race with session teardown on prod.
     return campaign
 
 
@@ -129,7 +130,6 @@ async def update_campaign(
         setattr(campaign, field, value)
     campaign.updated_at = datetime.utcnow()
     await db.commit()
-    await db.refresh(campaign)
     return campaign
 
 
@@ -212,7 +212,6 @@ async def send_campaign_to_client(
     campaign.status = "sent_to_client"
     campaign.updated_at = datetime.utcnow()
     await db.commit()
-    await db.refresh(campaign)
     return {"status": "sent", "campaign_id": campaign_id}
 
 
