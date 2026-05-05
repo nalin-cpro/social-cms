@@ -279,6 +279,7 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
 
   const handleFileUpload = async (file: File) => {
     setUploadState('uploading')
+    console.log('upload state: uploading')
     setUploadedName(file.name)
 
     const formData = new FormData()
@@ -297,7 +298,11 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
       if (!response.ok) throw new Error('Upload failed')
       const data = await response.json()
 
-      // Patch the content item with the new URL and source type
+      // Patch the content item with the new URL and source type so the backend
+      // is in sync, but DO NOT call onUpdate here — that would trigger the parent
+      // to re-render with feed_post_url set, which makes needsSourceSelector
+      // false and unmounts this component before the 'done' state can paint.
+      // The "Use this image" button bubbles up via onUpdate when the user confirms.
       await api.patch(`/content/${item.id}`, {
         feed_post_url: data.feed_post_url,
         image_source_type: 'manual_upload',
@@ -305,12 +310,10 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
 
       setUploadedUrl(data.feed_post_url)
       setUploadState('done')
-
-      // Bubble up immediately so localPost updates and the image renders without
-      // waiting for the user to click "Use this image"
-      onUpdate({ ...item, feed_post_url: data.feed_post_url, image_source_type: 'manual_upload' })
+      console.log('upload state: done', data.feed_post_url)
     } catch {
       setUploadState('error')
+      console.log('upload state: error')
       toast('Upload failed — please try again', 'error')
     }
   }
@@ -477,7 +480,11 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
                     Upload failed — please try again
                   </p>
                   <button
-                    onClick={e => { e.stopPropagation(); setUploadState('idle') }}
+                    onClick={e => {
+                      e.stopPropagation()
+                      setUploadState('idle')
+                      console.log('upload state: idle')
+                    }}
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg"
                     style={{ background: '#fff', border: '1px solid #DC2626', color: '#DC2626' }}
                   >
@@ -637,6 +644,8 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
       post.status === 'needs_image_source' ||
       !post.feed_post_url
     )
+
+  console.log('needsSourceSelector:', needsSourceSelector, 'feed_post_url:', localPost?.feed_post_url)
 
   const allTabs: { id: Tab; label: string; show: boolean }[] = [
     { id: 'feed',    label: 'Feed post', show: !isEmail },
