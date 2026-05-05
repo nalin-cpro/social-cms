@@ -187,13 +187,28 @@ async def generate_campaign(
         created_items.append(item)
 
     await db.commit()
-    await db.refresh(campaign)
-    for item in created_items:
-        await db.refresh(item)
 
-    from api.schemas.campaign import CampaignEntityWithPosts
-    from api.schemas.content import ContentItemRead
-
-    result = CampaignEntityWithPosts.model_validate(campaign)
-    result.posts = [ContentItemRead.model_validate(i) for i in created_items]
-    return result
+    # Build response from in-memory objects — refreshing after commit can fail
+    # if the session is closed by the get_db dependency teardown.
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "brand_key": campaign.brand_key,
+        "status": campaign.status,
+        "theme": campaign.theme,
+        "visual_direction": campaign.visual_direction,
+        "notes": campaign.notes,
+        "month_label": campaign.month_label,
+        "start_date": str(campaign.start_date) if campaign.start_date else None,
+        "end_date": str(campaign.end_date) if campaign.end_date else None,
+        "posts": [
+            {
+                "id": item.id,
+                "product_name": item.product_name,
+                "channel": item.channel,
+                "scheduled_date": str(item.scheduled_date) if item.scheduled_date else None,
+                "status": item.status,
+            }
+            for item in created_items
+        ],
+    }
