@@ -305,6 +305,10 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
 
       setUploadedUrl(data.feed_post_url)
       setUploadState('done')
+
+      // Bubble up immediately so localPost updates and the image renders without
+      // waiting for the user to click "Use this image"
+      onUpdate({ ...item, feed_post_url: data.feed_post_url, image_source_type: 'manual_upload' })
     } catch {
       setUploadState('error')
       toast('Upload failed — please try again', 'error')
@@ -544,7 +548,7 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
   // Sync localPost when parent pushes a new version (e.g. different item opened)
   useEffect(() => {
     if (item) setLocalPost(item)
-  }, [item?.id, item?.feed_post_url, item?.status])
+  }, [item?.id, item?.feed_post_url, item?.status, item?.image_source_type])
 
   useEffect(() => {
     if (!item) return
@@ -627,10 +631,11 @@ export default function PostDrawer({ item, currentUser, onClose, onUpdate }: Pro
   const needsSourceSelector =
     (isAdmin || isDesigner) &&
     !isEmail &&
+    !post.feed_post_url &&
     (
-      post.image_source_type === 'not_set' ||
+      post.status === 'pending' ||
       post.status === 'needs_image_source' ||
-      (post.status === 'pending' && !post.feed_post_url)
+      !post.feed_post_url
     )
 
   const allTabs: { id: Tab; label: string; show: boolean }[] = [
