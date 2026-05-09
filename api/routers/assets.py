@@ -139,10 +139,12 @@ async def generate_image_from_asset(
     if not asset or not asset.feed_post_url:
         raise HTTPException(status_code=404, detail="Asset not found or has no image")
 
-    # Resolve absolute URL for the reference image if needed
+    # Resolve absolute URL for the reference image if needed. The fallback MUST
+    # be reachable from fal.ai (not localhost) since fal.ai fetches the image
+    # over the public internet.
     reference_url = asset.feed_post_url
     if reference_url.startswith("/outputs/"):
-        base = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
+        base = os.environ.get("PUBLIC_BASE_URL", "https://social.progilityconsulting.in")
         reference_url = base + reference_url
 
     # Claude decides SWAP or STYLE

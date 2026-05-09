@@ -227,11 +227,12 @@ async def step_generate_image(
             "message": "No source image found. Please upload a product image first.",
         }
 
-    # fal.ai needs an absolute URL it can fetch — resolve /outputs/... to the public host.
+    # fal.ai needs an absolute URL it can fetch — resolve /outputs/... to the
+    # public host. The fallback MUST be reachable from fal.ai (not localhost).
     import os as _os
     source_url = item.feed_post_url
     if source_url.startswith("/outputs/"):
-        base = _os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
+        base = _os.environ.get("PUBLIC_BASE_URL", "https://social.progilityconsulting.in")
         source_url = base + source_url
 
     def _gen():
