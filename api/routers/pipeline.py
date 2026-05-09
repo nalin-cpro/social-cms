@@ -49,6 +49,7 @@ class StepRequest(BaseModel):
 class StepImageRequest(BaseModel):
     content_item_id: int
     test_mode: bool = False
+    instruction: str | None = None
 
 
 class RunAllRequest(BaseModel):
@@ -212,16 +213,29 @@ async def step_generate_image(
     _: Annotated[User, Depends(require_roles("admin", "designer"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Generate images for one ContentItem and persist URLs to DB."""
+    """Generate a lifestyle image for one ContentItem using its current
+    feed_post_url (typically an uploaded product photo) as the source image.
+    Returns a clear error if no source image is set."""
     item = await _get_item(db, body.content_item_id)
 
     if item.channel not in _CHANNELS_NEEDING_IMAGES:
         return {"success": True, "skipped": True, "reason": f"Channel '{item.channel}' does not need images"}
 
+    if not item.feed_post_url:
+        return {
+            "success": False,
+            "message": "No source image found. Please upload a product image first.",
+        }
+
+    # fal.ai needs an absolute URL it can fetch — resolve /outputs/... to the public host.
+    import os as _os
+    source_url = item.feed_post_url
+    if source_url.startswith("/outputs/"):
+        base = _os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
+        source_url = base + source_url
+
     def _gen():
         from src.image_gen import generate_images
-        from src.shopify import get_product_metadata
-        meta = get_product_metadata(item.brand_key, item.product_name) or {}
         return generate_images(
             brand_key=item.brand_key,
             product_name=item.product_name,
@@ -230,21 +244,24 @@ async def step_generate_image(
             scene=item.scene or "",
             scheduled_date=item.scheduled_date or "",
             test_mode=body.test_mode,
-            metadata=meta,
+            metadata={"image_url": source_url},
+            instruction=body.instruction or "",
         )
 
     urls = await asyncio.to_thread(_gen)
-    if urls:
-        item.feed_post_url = urls.get("feed")
-        item.story_1_url   = urls.get("story_1")
-        item.story_2_url   = urls.get("story_2")
-        item.lifestyle_url = urls.get("lifestyle")
-        item.image_source_type = "shopify"
+    if not urls or not urls.get("feed"):
+        return {"success": False, "message": "Image generation failed — please try again"}
+
+    item.feed_post_url    = urls.get("feed")
+    item.story_1_url      = urls.get("story_1")
+    item.story_2_url      = urls.get("story_2")
+    item.lifestyle_url    = urls.get("lifestyle")
+    item.image_source_type = "generated"
     item.updated_at = datetime.utcnow()
     await db.commit()
 
     return {
-        "success": bool(urls),
+        "success": True,
         "feed_post_url": item.feed_post_url,
         "story_1_url":   item.story_1_url,
         "story_2_url":   item.story_2_url,

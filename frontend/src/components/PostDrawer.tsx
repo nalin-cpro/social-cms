@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   X, ChevronRight, Send, Check, RefreshCw, Loader2, AlertCircle,
-  Store, Image as ImageIcon, Upload, ImageOff, CheckCircle2, FlaskConical,
+  Store, Image as ImageIcon, Upload, ImageOff, CheckCircle2, FlaskConical, Sparkles,
 } from 'lucide-react'
 import { ContentItem, ContentComment, User } from '../types'
 import { api } from '../api/client'
@@ -232,6 +232,8 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
   const [uploadedName, setUploadedName] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [activeSource, setActiveSource] = useState<'shopify' | 'asset' | 'upload' | null>(null)
+  const [lifestyleStep, setLifestyleStep] = useState<'idle' | 'instruction' | 'generating' | 'error'>('idle')
+  const [lifestyleInstruction, setLifestyleInstruction] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const fetchShopify = async () => {
@@ -317,6 +319,34 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
       setUploadState('error')
       console.log('upload state: error')
       toast('Upload failed — please try again', 'error')
+    }
+  }
+
+  const useUploadAsIs = () => {
+    onUpdate({ ...item, feed_post_url: uploadedUrl, image_source_type: 'manual_upload' })
+  }
+
+  const generateLifestyle = async () => {
+    setLifestyleStep('generating')
+    try {
+      const res = await api.post<{ success: boolean; feed_post_url?: string; message?: string }>(
+        '/pipeline/step/generate-image',
+        {
+          content_item_id: item.id,
+          test_mode: false,
+          instruction: lifestyleInstruction.trim() || null,
+        },
+      )
+      if (!res.success || !res.feed_post_url) {
+        throw new Error(res.message || 'Generation failed')
+      }
+      // onUpdate flips needsSourceSelector to false in the parent, which unmounts
+      // this component — no need to reset lifestyleStep afterwards.
+      onUpdate({ ...item, feed_post_url: res.feed_post_url, image_source_type: 'generated' })
+      toast('Lifestyle image generated successfully', 'success')
+    } catch (err) {
+      console.error('generate-image failed:', err)
+      setLifestyleStep('error')
     }
   }
 
@@ -446,32 +476,119 @@ function ImageSourceSelector({ item, onUpdate }: ImageSourceSelectorProps) {
               )}
 
               {uploadState === 'done' && (
-                <div className="mt-2 rounded-lg p-3 flex items-center gap-3"
-                  style={{ border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
-                  {uploadedUrl && (
-                    <img
-                      src={uploadedUrl.startsWith('/') ? `${BASE_URL}${uploadedUrl}` : uploadedUrl}
-                      alt=""
-                      className="w-12 h-12 rounded object-cover flex-shrink-0"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <CheckCircle2 size={12} style={{ color: '#15803d' }} />
-                      <p className="text-xs font-semibold" style={{ color: '#15803d' }}>Uploaded</p>
+                <div className="mt-2 space-y-3" onClick={e => e.stopPropagation()}>
+                  {/* Preview row */}
+                  <div className="rounded-lg p-3 flex items-center gap-3"
+                    style={{ border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+                    {uploadedUrl && (
+                      <img
+                        src={uploadedUrl.startsWith('/') ? `${BASE_URL}${uploadedUrl}` : uploadedUrl}
+                        alt=""
+                        className="w-12 h-12 rounded object-cover flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <CheckCircle2 size={12} style={{ color: '#15803d' }} />
+                        <p className="text-xs font-semibold" style={{ color: '#15803d' }}>Uploaded</p>
+                      </div>
+                      <p className="text-xs truncate" style={{ color: '#4a5280' }}>{uploadedName}</p>
                     </div>
-                    <p className="text-xs truncate" style={{ color: '#4a5280' }}>{uploadedName}</p>
                   </div>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      onUpdate({ ...item, feed_post_url: uploadedUrl, image_source_type: 'manual_upload' })
-                    }}
-                    className="flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg"
-                    style={{ background: GOLD, color: '#1a1f3a' }}
-                  >
-                    Use this image
-                  </button>
+
+                  {/* Choice: use as-is vs generate lifestyle */}
+                  {lifestyleStep === 'idle' && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          onClick={useUploadAsIs}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                          style={{ border: '1px solid #dde2f0', color: '#4a5280', background: '#fff' }}
+                        >
+                          Use this image as-is
+                        </button>
+                        <button
+                          onClick={() => setLifestyleStep('instruction')}
+                          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+                          style={{ background: GOLD, color: '#1a1f3a' }}
+                        >
+                          <Sparkles size={11} /> Generate lifestyle image →
+                        </button>
+                      </div>
+                      <p className="text-xs leading-relaxed" style={{ color: '#8892b8' }}>
+                        Generate lifestyle creates a real-world scene around your product using AI.
+                        Takes about 30 seconds.
+                      </p>
+                    </>
+                  )}
+
+                  {lifestyleStep === 'instruction' && (
+                    <div className="rounded-lg p-3 space-y-2"
+                      style={{ background: '#f4f6fb', border: '1px solid #dde2f0' }}>
+                      <label className="text-xs font-semibold block" style={{ color: '#1a1f3a' }}>
+                        Describe the scene (optional)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={lifestyleInstruction}
+                        onChange={e => setLifestyleInstruction(e.target.value)}
+                        placeholder="e.g. 'urban street setting, golden hour lighting, man walking' or leave blank for AI to decide based on brand style"
+                        className="w-full px-3 py-2 text-sm rounded-lg outline-none resize-none"
+                        style={{ border: '1px solid #dde2f0', color: '#1a1f3a', background: '#fff' }}
+                      />
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => { setLifestyleStep('idle'); setLifestyleInstruction('') }}
+                          className="text-xs underline"
+                          style={{ color: '#8892b8' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={generateLifestyle}
+                          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+                          style={{ background: GOLD, color: '#1a1f3a' }}
+                        >
+                          <Sparkles size={11} /> Generate →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {lifestyleStep === 'generating' && (
+                    <div className="rounded-lg px-4 py-4 flex items-center gap-3"
+                      style={{ border: '1px solid #dde2f0', background: '#f4f6fb' }}>
+                      <Loader2 size={16} className="animate-spin flex-shrink-0" style={{ color: NAVY }} />
+                      <p className="text-xs" style={{ color: '#1a1f3a' }}>
+                        Generating lifestyle image... this takes ~30 seconds
+                      </p>
+                    </div>
+                  )}
+
+                  {lifestyleStep === 'error' && (
+                    <div className="rounded-lg px-4 py-3 space-y-2"
+                      style={{ border: '2px solid #DC2626', background: '#fef2f2' }}>
+                      <p className="text-xs font-medium" style={{ color: '#DC2626' }}>
+                        Generation failed — please try again
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={generateLifestyle}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                          style={{ background: '#fff', border: '1px solid #DC2626', color: '#DC2626' }}
+                        >
+                          Try again
+                        </button>
+                        <button
+                          onClick={useUploadAsIs}
+                          className="text-xs underline"
+                          style={{ color: '#4a5280' }}
+                        >
+                          Use uploaded image instead
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
