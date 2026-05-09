@@ -11,7 +11,9 @@ import { useToast } from '../contexts/ToastContext'
 
 const NAVY = '#1a2d82'
 const GOLD = '#f5b800'
-const BASE_URL = import.meta.env.VITE_API_BASE || ''
+// Strip trailing /api so static paths like /outputs/uploads/... resolve to the
+// API host. Falls back to '' when VITE_API_URL is unset (dev with Vite proxy).
+const BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '')
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
